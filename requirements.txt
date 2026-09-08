@@ -1,0 +1,15 @@
+# Runtime dependencies for the TurboGears2 version of bingarde.
+TurboGears2==2.5.0
+WebOb==1.8.11
+Jinja2==3.1.6
+Beaker==1.14.1
+SQLAlchemy==2.1.2
+zope.sqlalchemy==4.1
+transaction==5.1
+alembic==1.20.0
+psycopg[binary]==3.3.6
+PasteDeploy==3.1.0
+gunicorn==26.2.0
+Authlib==1.8.0
+joserfc==1.7.5
+requests==2.34.2

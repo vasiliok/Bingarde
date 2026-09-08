@@ -1,0 +1,81 @@
+# Docker setup for bingarde (TurboGears2 + PostgreSQL).
+#
+# Two ways to use it, selected with a compose "profile":
+#
+#   Run the TESTS (db + pytest), then exit:
+#     docker compose --profile test up --build --abort-on-container-exit
+#
+#   Run the real APP (db + web + nginx), stays running:
+#     docker compose --profile run up --build
+#     -> open http://localhost:8080
+#
+# The "db" service has no profile, so it starts for either one.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bingarde
+      POSTGRES_PASSWORD: bingarde
+      POSTGRES_DB: bingarde
+    volumes:
+      # Creates the second database used by the test suite.
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bingarde -d bingarde"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # ---- TESTS ------------------------------------------------------------
+  app:
+    build: .
+    profiles: ["test"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://bingarde:bingarde@db/bingarde_test
+    command: pytest -v
+
+  # ---- REAL APP: TurboGears2 (gunicorn) ---------------------------------
+  web:
+    build: .
+    profiles: ["run"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://bingarde:bingarde@db/bingarde
+      # Demo value only. Set a long random string for any real deployment.
+      SESSION_SECRET: change-me-demo-only
+      BASE_URL: http://localhost:8080/
+      # Demo: e-mail-only login, and this address is admin.
+      DEV_LOGIN: "1"
+      ADMIN_EMAILS: admin@example.org
+      # Real Google login: export these before "docker compose up".
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    volumes:
+      - static:/app/staticfiles
+      # Uploaded build files. Shared with nginx.
+      - store:/data/store
+
+  # ---- REAL APP: nginx (reverse proxy + static) -------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    profiles: ["run"]
+    depends_on:
+      - web
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - static:/var/www/static:ro
+      - store:/var/www/store:ro
+
+volumes:
+  pgdata:
+  static:
+  store:

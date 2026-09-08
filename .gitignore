@@ -1,0 +1,14 @@
+env
+db.sqlite3
+touchme
+logs
+**/*.pyc
+*.pyc
+.idea
+settings.py
+store
+bingarde/static/doc/*
+.DS_Store
+temp/*
+!temp/.dummy
+scripts/cache/

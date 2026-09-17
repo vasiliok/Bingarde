@@ -4,6 +4,7 @@ import logging
 from sqlalchemy import text
 from tg import TGController, expose, response
 
+from bingarde.controllers.api import ApiController
 from bingarde.controllers.error import ErrorController
 from bingarde.model import DBSession
 
@@ -19,6 +20,7 @@ def database_ok():
 
 
 class RootController(TGController):
+    api = ApiController()
     error = ErrorController()
 
     @expose("jinja:bingarde.templates.status")

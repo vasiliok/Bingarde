@@ -1,0 +1,170 @@
+"""Who is calling: a CI machine with an API token, or a browser with a login session.
+
+* API tokens come in the ``Authorization: Bearer bg_...`` header. Only their
+  sha256 hash is stored. A token has scope "read" or "write".
+* Browser logins keep ``user_id`` in the Beaker session. Every POST made with
+  a session must carry the session's CSRF token (header ``X-CSRF-Token`` or
+  form field ``_csrf_token``). Requests with a Bearer token are exempt.
+* Admins are the users whose e-mail is listed in ADMIN_EMAILS.
+"""
+import datetime
+import hashlib
+import hmac
+import secrets
+from dataclasses import dataclass
+from typing import Optional
+
+from sqlalchemy import select
+from tg import config, request, session
+
+from bingarde.model import ApiToken, DBSession, User
+
+TOKEN_PREFIX = "bg_"
+SESSION_COOKIE = "beaker.session.id"
+CSRF_HEADER = "X-CSRF-Token"
+CSRF_FIELD = "_csrf_token"
+
+
+class AuthError(Exception):
+    """Raised when the caller may not do this. ``status`` is 401 or 403."""
+
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+
+@dataclass
+class Identity:
+    user: User
+    via: str                      # "token" or "session"
+    scope: str                    # "read" or "write"
+    token: Optional[ApiToken] = None
+
+    @property
+    def is_admin(self):
+        return is_admin(self.user)
+
+
+# ---- settings -----------------------------------------------------------------
+
+def _csv_setting(name):
+    return {v.strip().lower() for v in str(config.get(name, "")).split(",") if v.strip()}
+
+
+def is_admin(user):
+    return user is not None and user.email.lower() in _csv_setting("admin_emails")
+
+
+def email_allowed(email):
+    """True when ALLOWED_EMAIL_DOMAINS is empty or contains the e-mail's domain."""
+    domains = _csv_setting("allowed_email_domains")
+    return not domains or email.rsplit("@", 1)[-1].lower() in domains
+
+
+def dev_login_enabled():
+    return str(config.get("dev_login", "")).lower() in ("1", "true", "yes")
+
+
+# ---- tokens -------------------------------------------------------------------
+
+def hash_token(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_token(user, name, scope):
+    """Create a token for ``user``. Returns (ApiToken row, the token text, shown once)."""
+    if scope not in ("read", "write"):
+        raise ValueError("scope must be 'read' or 'write'")
+    token = TOKEN_PREFIX + secrets.token_urlsafe(32)
+    row = ApiToken(user=user, name=name, scope=scope,
+                   token_prefix=token[:10], token_hash=hash_token(token))
+    DBSession.add(row)
+    DBSession.flush()
+    return row, token
+
+
+def _identity_from_token(token):
+    row = DBSession.scalar(select(ApiToken).where(ApiToken.token_hash == hash_token(token)))
+    if row is None or row.revoked_at is not None or not row.user.is_active:
+        raise AuthError(401, "invalid or revoked API token")
+    row.last_used_at = datetime.datetime.now(datetime.timezone.utc)
+    return Identity(user=row.user, via="token", scope=row.scope, token=row)
+
+
+# ---- sessions -----------------------------------------------------------------
+
+def _has_session_cookie():
+    # Reading the Beaker session creates one (and a cookie), so anonymous API
+    # calls must not touch it unless the client already has a session.
+    return SESSION_COOKIE in request.cookies
+
+
+def _identity_from_session():
+    if not _has_session_cookie():
+        return None
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    user = DBSession.get(User, user_id)
+    if user is None or not user.is_active:
+        return None
+    return Identity(user=user, via="session", scope="write")
+
+
+def current_identity():
+    """The caller's Identity, or None. Cached for the rest of the request."""
+    environ = request.environ
+    if "bingarde.identity" not in environ:
+        header = request.headers.get("Authorization", "")
+        if header.lower().startswith("bearer "):
+            identity = _identity_from_token(header[7:].strip())
+        else:
+            identity = _identity_from_session()
+        environ["bingarde.identity"] = identity
+    return environ["bingarde.identity"]
+
+
+def login(user):
+    """Start a fresh session for ``user`` (new session id: no fixation)."""
+    session.invalidate()
+    session["user_id"] = user.id
+    session["csrf_token"] = secrets.token_urlsafe(32)
+    session.save()
+    user.last_login_at = datetime.datetime.now(datetime.timezone.utc)
+
+
+def logout():
+    if _has_session_cookie():
+        session.delete()
+
+
+def csrf_token():
+    """The session's CSRF token, created on first use (for forms and pages)."""
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+        session.save()
+    return session["csrf_token"]
+
+
+def check_csrf():
+    """Raise AuthError(403) unless the request carries this session's CSRF token."""
+    expected = session.get("csrf_token") if _has_session_cookie() else None
+    sent = request.headers.get(CSRF_HEADER) or request.POST.get(CSRF_FIELD)
+    if not expected or not sent or not hmac.compare_digest(str(expected), str(sent)):
+        raise AuthError(403, "missing or invalid CSRF token")
+
+
+# ---- guards -------------------------------------------------------------------
+
+def require(write=False, admin=False):
+    """Check the caller for an API call. Returns the Identity or raises AuthError."""
+    identity = current_identity()
+    if identity is None:
+        raise AuthError(401, "authentication required: send 'Authorization: Bearer <token>'")
+    if identity.via == "session" and request.method not in ("GET", "HEAD", "OPTIONS"):
+        check_csrf()
+    if write and identity.scope != "write":
+        raise AuthError(403, "this API token is read-only")
+    if admin and not identity.is_admin:
+        raise AuthError(403, "admin rights required")
+    return identity

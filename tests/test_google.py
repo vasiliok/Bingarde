@@ -1,0 +1,143 @@
+"""Google sign-in, with Google's token endpoint and keys replaced by a local test key."""
+import time
+from urllib.parse import parse_qs, urlparse
+
+import pytest
+from joserfc import jwt
+from joserfc.jwk import KeySet, RSAKey
+
+from bingarde.lib import google
+from bingarde.model import User
+from tests.conftest import client
+
+KEY = RSAKey.generate_key(2048, parameters={"kid": "test-key", "alg": "RS256", "use": "sig"})
+OTHER_KEY = RSAKey.generate_key(2048, parameters={"kid": "test-key"})
+
+
+def id_token(nonce, key=KEY, **overrides):
+    now = int(time.time())
+    claims = {"iss": "https://accounts.google.com", "aud": "test-client-id",
+              "sub": "google-123", "email": "pat@example.com", "email_verified": True,
+              "name": "Pat", "nonce": nonce, "iat": now, "exp": now + 300}
+    claims.update(overrides)
+    return jwt.encode({"alg": "RS256", "kid": "test-key"}, claims, key)
+
+
+@pytest.fixture
+def fake_google(monkeypatch):
+    """Replace both network calls. ``answer`` builds the token response from the nonce."""
+    state = {"answer": lambda nonce: {"id_token": id_token(nonce)}}
+    monkeypatch.setattr(google, "fetch_jwks", lambda: KeySet([KEY]).as_dict(private=False))
+    monkeypatch.setitem(google._jwks_cache, "keys", None)
+
+    def exchange(code, verifier):
+        assert code == "the-code" and verifier
+        return state["answer"](state["nonce"])
+
+    monkeypatch.setattr(google, "exchange_code", exchange)
+    return state
+
+
+def start(browser, fake_google, came_from="/tokens"):
+    resp = browser.get("/login/google", {"came_from": came_from}, status=302)
+    query = parse_qs(urlparse(resp.location).query)
+    assert resp.location.startswith(google.AUTHORIZE_URL)
+    assert query["client_id"] == ["test-client-id"]
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["redirect_uri"] == ["http://localhost/login/google/callback"]
+    fake_google["nonce"] = query["nonce"][0]
+    return query["state"][0]
+
+
+def test_successful_login_creates_user_and_session(wsgi_app, db, anon, fake_google):
+    browser = client(wsgi_app)
+    state = start(browser, fake_google)
+    resp = browser.get("/login/google/callback", {"state": state, "code": "the-code"}, status=302)
+    assert resp.location.endswith("/tokens")
+    user = db.query(User).one()
+    assert (user.email, user.google_sub, user.name) == ("pat@example.com", "google-123", "Pat")
+    browser.get("/tokens", status=200)
+
+
+def test_second_login_reuses_the_user(wsgi_app, db, anon, fake_google):
+    for _ in range(2):
+        browser = client(wsgi_app)
+        state = start(browser, fake_google)
+        browser.get("/login/google/callback", {"state": state, "code": "the-code"}, status=302)
+    assert db.query(User).count() == 1
+
+
+def test_google_login_links_an_existing_dev_user(wsgi_app, db, anon, fake_google):
+    db.add(User(email="pat@example.com", name="Pat"))
+    db.commit()
+    browser = client(wsgi_app)
+    state = start(browser, fake_google)
+    browser.get("/login/google/callback", {"state": state, "code": "the-code"}, status=302)
+    assert db.query(User).one().google_sub == "google-123"
+
+
+def failed_login(wsgi_app, fake_google, params=None, answer=None):
+    if answer:
+        fake_google["answer"] = answer
+    browser = client(wsgi_app)
+    state = start(browser, fake_google)
+    query = {"state": state, "code": "the-code"}
+    query.update(params or {})
+    resp = browser.get("/login/google/callback", query, status=302)
+    assert "/login?error=" in resp.location
+    browser.get("/tokens", status=302)          # still not signed in
+    return resp.location
+
+
+def test_wrong_state_is_rejected(wsgi_app, anon, fake_google):
+    assert "state" in failed_login(wsgi_app, fake_google, params={"state": "forged"})
+
+
+def test_wrong_nonce_is_rejected(wsgi_app, anon, fake_google):
+    failed_login(wsgi_app, fake_google, answer=lambda nonce: {"id_token": id_token("other")})
+
+
+def test_wrong_audience_is_rejected(wsgi_app, anon, fake_google):
+    failed_login(wsgi_app, fake_google,
+                 answer=lambda nonce: {"id_token": id_token(nonce, aud="someone-else")})
+
+
+def test_expired_token_is_rejected(wsgi_app, anon, fake_google):
+    failed_login(wsgi_app, fake_google,
+                 answer=lambda nonce: {"id_token": id_token(nonce, exp=int(time.time()) - 60)})
+
+
+def test_token_signed_by_another_key_is_rejected(wsgi_app, anon, fake_google):
+    failed_login(wsgi_app, fake_google,
+                 answer=lambda nonce: {"id_token": id_token(nonce, key=OTHER_KEY)})
+
+
+def test_unverified_email_is_rejected(wsgi_app, anon, fake_google):
+    location = failed_login(wsgi_app, fake_google,
+                            answer=lambda nonce: {"id_token": id_token(nonce, email_verified=False)})
+    assert "verified" in location
+
+
+def test_domain_outside_allowed_list_is_rejected(wsgi_app, db, anon, fake_google, monkeypatch):
+    from tg import config
+    monkeypatch.setitem(config, "allowed_email_domains", "company.com")
+    failed_login(wsgi_app, fake_google)
+    assert db.query(User).count() == 0
+
+
+def test_callback_without_started_login_is_rejected(wsgi_app, anon):
+    resp = client(wsgi_app).get("/login/google/callback", {"state": "x", "code": "y"}, status=302)
+    assert "/login?error=" in resp.location
+
+
+def test_google_error_parameter_is_reported(wsgi_app, anon, fake_google):
+    assert "access_denied" in failed_login(wsgi_app, fake_google, params={"error": "access_denied"})
+
+
+def test_login_page_hides_google_when_not_configured(wsgi_app, anon, monkeypatch):
+    from tg import config
+    monkeypatch.setitem(config, "google_client_id", "")
+    page = client(wsgi_app).get("/login")
+    assert "Sign in with Google" not in page.text
+    resp = client(wsgi_app).get("/login/google", status=302)
+    assert "/login?error=" in resp.location

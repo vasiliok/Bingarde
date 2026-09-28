@@ -6,12 +6,14 @@ the upload folder (STORE_DIR) is wiped.
 
 ``app`` calls the API like a CI machine with an admin's write token
 (test.ini lists admin@example.com in admin_emails). ``anon`` sends no
-credentials.
+credentials. ``login()`` signs a browser in through DEV_LOGIN.
 """
 import os
 import random
 import shutil
 import tempfile
+
+import re
 
 import pytest
 from alembic import command
@@ -93,6 +95,19 @@ def app(wsgi_app, migrated_db, clean_state):
 @pytest.fixture
 def anon(wsgi_app, clean_state):
     return TestApp(wsgi_app)
+
+
+def csrf_from(resp):
+    return re.search(r'name="_csrf_token" value="([^"]+)"', resp.text).group(1)
+
+
+def login(wsgi_app, email):
+    """A browser signed in through DEV_LOGIN. Returns (TestApp, csrf token)."""
+    browser = TestApp(wsgi_app)
+    page = browser.get("/login")
+    browser.post("/login/dev", {"email": email, "_csrf_token": csrf_from(page)}, status=302)
+    tokens_page = browser.get("/tokens")
+    return browser, csrf_from(tokens_page)
 
 
 @pytest.fixture

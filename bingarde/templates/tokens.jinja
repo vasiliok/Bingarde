@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>API tokens - Bingarde</title>
+</head>
+<body>
+    <h1>API tokens</h1>
+    <p>Signed in as {{ user.email }}{% if is_admin %} (admin){% endif %}.</p>
+
+    {% if new_token %}
+    <div class="new-token" role="status">
+        <p>Your new token. Copy it now: it will not be shown again.</p>
+        <code id="new-token">{{ new_token }}</code>
+        <p>Use it as: <code>curl -H "Authorization: Bearer {{ new_token }}" ...</code></p>
+    </div>
+    {% endif %}
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+    <h2>Create a token</h2>
+    <form method="post" action="/tokens/create">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+        <label>Name <input type="text" name="name" maxlength="100" required placeholder="e.g. jenkins-ios"></label>
+        <label><input type="radio" name="scope" value="read" checked> read (list and download)</label>
+        <label><input type="radio" name="scope" value="write"> write (also create builds and upload)</label>
+        <button type="submit">Create</button>
+    </form>
+
+    <h2>Tokens</h2>
+    <table>
+        <thead><tr>
+            <th>Name</th>{% if is_admin %}<th>Owner</th>{% endif %}<th>Token</th><th>Scope</th>
+            <th>Created</th><th>Last used</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody>
+        {% for t in tokens %}
+        <tr>
+            <td>{{ t.name }}</td>{% if is_admin %}<td>{{ t.user.email }}</td>{% endif %}
+            <td><code>{{ t.token_prefix }}…</code></td>
+            <td>{{ t.scope }}</td>
+            <td>{{ t.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td>{{ t.last_used_at.strftime("%Y-%m-%d %H:%M") if t.last_used_at else "never" }}</td>
+            <td>{{ "revoked" if t.revoked_at else "active" }}</td>
+            <td>{% if not t.revoked_at %}
+                <form method="post" action="/tokens/revoke">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="token_id" value="{{ t.id }}">
+                    <button type="submit">Revoke</button>
+                </form>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8">No tokens yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <form method="post" action="/logout">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Sign out</button>
+    </form>
+</body>
+</html>

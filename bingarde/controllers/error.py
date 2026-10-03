@@ -1,6 +1,5 @@
 """Error page. TurboGears sends HTML error responses (403, 404, 500, ...) here
 and keeps their original status code. JSON API errors are not affected."""
-from markupsafe import escape
 from tg import TGController, expose, request
 
 MESSAGES = {
@@ -8,19 +7,20 @@ MESSAGES = {
     401: "Please sign in.",
     403: "You are not allowed to do this.",
     404: "This page does not exist.",
-    500: "Something went wrong on the server.",
+    405: "This action needs a form submission.",
+    500: "Something went wrong on the server. The details are in the server log.",
 }
 
 
 class ErrorController(TGController):
 
-    @expose(content_type="text/html")
+    @expose("jinja:bingarde.templates.error")
     def document(self, *args, **kw):
+        # The failed request's transaction is rolled back, so the user object
+        # cached for it is detached. Let the navbar look the caller up again.
+        request.environ.pop("bingarde.identity", None)
         original = request.environ.get("tg.original_response")
         code = original.status_int if original is not None else 500
-        detail = getattr(original, "detail", None) if original is not None else None
-        message = detail or MESSAGES.get(code, "Error.")
-        return ("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-                "<title>%d - Bingarde</title></head><body><h1>%d</h1><p>%s</p>"
-                "<p><a href=\"/\">Back to Bingarde</a></p></body></html>"
-                % (code, code, escape(message)))
+        # Never show exception text from a 500: it may contain internals.
+        detail = getattr(original, "detail", None) if original is not None and code != 500 else None
+        return dict(code=code, message=detail or MESSAGES.get(code, "Error."))

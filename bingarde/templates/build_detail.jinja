@@ -1,0 +1,62 @@
+{% extends "bingarde.templates.base" %}
+
+{% block caption %}Build {{ build.id }} - Bingarde{% endblock %}
+
+{% block content %}
+<div class="container pb-4" style="max-width: 1100px;">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/builds">Builds</a></li>
+            <li class="breadcrumb-item active" aria-current="page">#{{ build.id }}</li>
+        </ol>
+    </nav>
+
+    <div class="card page-card mb-4">
+        <div class="card-body p-4">
+            <h2 class="h4 mb-3">{{ build.name }} <small class="text-body-secondary fw-normal">#{{ build.id }}</small></h2>
+            <dl class="row mb-0">
+                <dt class="col-sm-2 text-body-secondary fw-normal">Project</dt><dd class="col-sm-10">{{ build.project }}</dd>
+                <dt class="col-sm-2 text-body-secondary fw-normal">Branch</dt><dd class="col-sm-10">{{ build.branch }}</dd>
+                <dt class="col-sm-2 text-body-secondary fw-normal">Platform</dt><dd class="col-sm-10">{{ build.platform }}</dd>
+                <dt class="col-sm-2 text-body-secondary fw-normal">Build</dt><dd class="col-sm-10">{{ build.build }}</dd>
+                {% if build.kind %}<dt class="col-sm-2 text-body-secondary fw-normal">Kind</dt><dd class="col-sm-10">{{ build.kind }}</dd>{% endif %}
+                <dt class="col-sm-2 text-body-secondary fw-normal">Created</dt><dd class="col-sm-10 mb-0">{{ h.format_date(build.created_at) }}{% if build.created_by %} by {{ build.created_by.email }}{% endif %}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="card page-card mb-4">
+        <div class="card-header bg-body d-flex align-items-center">
+            <span class="fw-semibold"><i class="bi bi-files me-1"></i>Files</span>
+            {% if files %}
+            <a class="btn btn-outline-primary btn-sm ms-auto" href="/api/v2/builds/{{ build.id }}/archive"><i class="bi bi-download me-1"></i>Download all as zip</a>
+            {% endif %}
+        </div>
+        {% if files %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="id-file-table">
+                <thead><tr><th>File</th><th>Size</th><th>Uploaded</th></tr></thead>
+                <tbody>
+                {% for f in files %}
+                    <tr>
+                        <td><i class="bi bi-file-earmark me-1 text-body-secondary"></i><a href="/files/{{ f.id }}">{{ f.path.rsplit('/', 1)[-1] }}</a></td>
+                        <td>{{ h.format_size(f.size) }}</td>
+                        <td>{{ h.format_date(f.uploaded_at) }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="card-body text-body-secondary">No files uploaded for this build.</div>
+        {% endif %}
+    </div>
+
+    <div class="card page-card">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-clock-history me-1"></i>History</div>
+        <div class="card-body">
+            <textarea id="build-history" class="form-control font-monospace" rows="16" readonly>{{ build.history }}</textarea>
+        </div>
+    </div>
+</div>
+{% endblock %}

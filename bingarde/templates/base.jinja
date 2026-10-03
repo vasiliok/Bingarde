@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block caption %}Bingarde{% endblock %}</title>
+    {% set ident = h.current_identity() %}
+    {% if ident and ident.via == "session" %}
+    <meta name="csrf-token" content="{{ h.csrf_token() }}">
+    {% endif %}
+    <link href="{{ h.static('bootstrap5/css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ h.static('bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet">
+    <link href="{{ h.static('css/app.css') }}" rel="stylesheet">
+    {% block styles %}{% endblock %}
+</head>
+<body>
+    {% if not hide_nav %}
+    <nav class="navbar navbar-expand-lg bg-body border-bottom mb-4">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand fw-semibold" href="/"><i class="bi bi-box-seam me-2 text-primary"></i>Bingarde</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#id-navbar"
+                    aria-controls="id-navbar" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="id-navbar">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link{% if current_page == 'buildlist' %} active{% endif %}" href="/builds">Builds</a></li>
+                    <li class="nav-item"><a class="nav-link{% if current_page == 'tokens' %} active{% endif %}" href="/tokens">API tokens</a></li>
+                </ul>
+                <div class="d-flex align-items-center gap-3">
+                    {% set usage = h.storage_usage() %}
+                    {% if usage %}
+                    <span class="small text-body-secondary" title="Free space on the file store">
+                        <i class="bi bi-hdd me-1"></i>{{ h.format_size(usage[0]) }} free of {{ h.format_size(usage[1]) }}
+                    </span>
+                    {% endif %}
+                    {% if ident %}
+                    <span class="small">{{ ident.user.email }}{% if ident.is_admin %} <span class="badge text-bg-primary">admin</span>{% endif %}</span>
+                    <form class="mb-0" method="post" action="/logout">
+                        <input type="hidden" name="_csrf_token" value="{{ h.csrf_token() }}">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm">Sign out</button>
+                    </form>
+                    {% else %}
+                    <a class="btn btn-outline-primary btn-sm" href="/login">Sign in</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+
+    <script src="{{ h.static('bootstrap5/js/bootstrap.bundle.min.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

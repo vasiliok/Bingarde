@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from sqlalchemy import select
-from tg import config, request, session
+from tg import abort, config, redirect, request, session
 
 from bingarde.model import ApiToken, DBSession, User
 
@@ -168,3 +168,30 @@ def require(write=False, admin=False):
     if admin and not identity.is_admin:
         raise AuthError(403, "admin rights required")
     return identity
+
+
+def page_identity():
+    """The signed-in browser user for an HTML page.
+
+    Redirects to /login when nobody is signed in, and answers 403 to API
+    tokens: pages and their AJAX calls belong to browser sessions.
+    """
+    try:
+        identity = current_identity()
+    except AuthError:
+        identity = None
+    if identity is None:
+        redirect("/login", params={"came_from": request.path_qs})
+    if identity.via != "session":
+        abort(403, "this page is for signed-in browser sessions, not API tokens")
+    return identity
+
+
+def require_page_post():
+    """For page actions: must be a POST that carries the session's CSRF token."""
+    if request.method != "POST":
+        abort(405, "use POST")
+    try:
+        check_csrf()
+    except AuthError:
+        abort(403, "missing or invalid CSRF token")

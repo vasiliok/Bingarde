@@ -23,6 +23,7 @@ ENV_OVERRIDES = {
     "DEV_LOGIN": "dev_login",
     "GOOGLE_CLIENT_ID": "google_client_id",
     "GOOGLE_CLIENT_SECRET": "google_client_secret",
+    "XACCEL": "xaccel",
 }
 
 

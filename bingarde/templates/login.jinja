@@ -1,29 +1,42 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>Sign in - Bingarde</title>
-</head>
-<body>
-    <h1>Sign in to Bingarde</h1>
-    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% extends "bingarde.templates.base" %}
 
-    {% if google_enabled %}
-    <p><a href="/login/google?came_from={{ came_from|urlencode }}">Sign in with Google</a></p>
-    {% else %}
-    <p>Google sign-in is not configured (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET).</p>
-    {% endif %}
+{% block caption %}Sign in - Bingarde{% endblock %}
 
-    {% if dev_login %}
-    <h2>Developer login</h2>
-    <p>DEV_LOGIN is on: sign in with just an e-mail address. Never enable this in production.</p>
-    <form method="post" action="/login/dev">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="came_from" value="{{ came_from }}">
-        <label>E-mail <input type="email" name="email" required></label>
-        <label>Name <input type="text" name="name"></label>
-        <button type="submit">Sign in</button>
-    </form>
-    {% endif %}
-</body>
-</html>
+{% block content %}
+<div class="container" style="max-width: 440px; margin-top: 10vh;">
+    <div class="text-center mb-4">
+        <i class="bi bi-box-seam text-primary" style="font-size: 2.5rem;"></i>
+        <h1 class="h3 mt-2">Sign in to Bingarde</h1>
+    </div>
+    <div class="card page-card">
+        <div class="card-body p-4">
+            {% if error %}<div class="alert alert-danger error" role="alert">{{ error }}</div>{% endif %}
+
+            {% if google_enabled %}
+            <a class="btn btn-primary btn-lg w-100" href="/login/google?came_from={{ came_from|urlencode }}"><i class="bi bi-google me-2"></i>Sign in with Google</a>
+            {% else %}
+            <p class="text-body-secondary small mb-0">Google sign-in is not configured (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET).</p>
+            {% endif %}
+
+            {% if dev_login %}
+            <hr class="my-4">
+            <h2 class="h6">Developer login</h2>
+            <p class="small text-warning-emphasis">DEV_LOGIN is on: sign in with just an e-mail address. Never enable this in production.</p>
+            <form method="post" action="/login/dev">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="came_from" value="{{ came_from }}">
+                <div class="mb-3">
+                    <label for="id-dev-email" class="form-label">E-mail</label>
+                    <input type="email" class="form-control" id="id-dev-email" name="email" required>
+                </div>
+                <div class="mb-3">
+                    <label for="id-dev-name" class="form-label">Name <span class="text-body-secondary">(optional)</span></label>
+                    <input type="text" class="form-control" id="id-dev-name" name="name">
+                </div>
+                <button type="submit" class="btn btn-outline-primary w-100">Sign in</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

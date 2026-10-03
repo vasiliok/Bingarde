@@ -7,6 +7,8 @@ from tg import TGController, abort, expose, redirect, request, response
 from bingarde.controllers.api import ApiController
 from bingarde.controllers.auth import LoginController
 from bingarde.controllers.error import ErrorController
+from bingarde.controllers.files import FilesController
+from bingarde.controllers.builds import BuildsController
 from bingarde.controllers.tokens import TokensController
 from bingarde.lib import identity
 from bingarde.model import DBSession
@@ -26,11 +28,13 @@ class RootController(TGController):
     api = ApiController()
     login = LoginController()
     tokens = TokensController()
+    builds = BuildsController()
+    files = FilesController()
     error = ErrorController()
 
-    @expose("jinja:bingarde.templates.status")
+    @expose()
     def index(self):
-        return dict(db_ok=database_ok())
+        redirect("/builds")
 
     @expose("json")
     def health(self):

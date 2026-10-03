@@ -1,0 +1,379 @@
+/* Bingarde styles on top of Bootstrap 5. */
+
+body {
+    background: var(--bs-tertiary-bg);
+}
+
+.page-card {
+    border: 0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 1px 8px rgba(0, 0, 0, .04);
+}
+
+/* ---- condition builder (condition-builder.js) --------------------------------
+   Arrangement after the "groups" design: a top AND/OR toggle, group cards
+   linked by a vertical line, round remove buttons, "Add new group" below.
+   Colours come only from Bootstrap's variables. */
+
+.cb {
+    --cb-line: var(--bs-border-color);
+    --cb-radius: .75rem;
+    --cb-shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 4px 16px rgba(0, 0, 0, .06);
+    position: relative;
+}
+
+/* Pill-shaped AND/OR switch. */
+.cb-toggle {
+    display: inline-flex;
+    padding: 3px;
+    gap: 2px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 50rem;
+    box-shadow: var(--cb-shadow);
+}
+
+.cb-toggle button {
+    border: 0;
+    background: transparent;
+    color: var(--bs-body-color);
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    padding: .3rem .8rem;
+    border-radius: 50rem;
+    line-height: 1.2;
+}
+
+.cb-toggle button.active {
+    background: var(--bs-primary);
+    color: #fff;
+}
+
+.cb-toggle button:focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 1px;
+}
+
+.cb-caption {
+    color: var(--bs-secondary-color);
+    font-size: .9rem;
+}
+
+.cb-top {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding-left: .5rem;
+}
+
+/* With 0 or 1 group the top switch has nothing to join: keep it quiet. */
+.cb-top.cb-single .cb-toggle {
+    opacity: .55;
+}
+
+.cb:not(.cb-has-groups) .cb-top {
+    display: none;
+}
+
+/* The vertical line that links the top switch and the groups. */
+.cb-groups {
+    position: relative;
+}
+
+.cb-has-groups .cb-groups::before {
+    content: "";
+    position: absolute;
+    left: 2.1rem;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--cb-line);
+}
+
+.cb-link {
+    position: relative;
+    padding: .75rem 0 .75rem .5rem;
+}
+
+.cb-groups > .cb-link:first-child {
+    padding: .4rem 0;
+}
+
+.cb-link-op {
+    display: inline-block;
+    position: relative;
+    padding: .3rem .8rem;
+    border-radius: 50rem;
+    background: var(--bs-primary);
+    color: #fff;
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    line-height: 1.2;
+    box-shadow: 0 0 0 4px var(--bs-tertiary-bg);
+}
+
+/* One group of conditions. */
+.cb-group {
+    position: relative;
+    background: var(--bs-body-bg);
+    border-radius: var(--cb-radius);
+    box-shadow: var(--cb-shadow);
+    overflow: hidden;
+}
+
+.cb-group-body {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: 1.25rem 4.25rem 1.25rem 1.25rem;
+}
+
+/* The group's own AND/OR, shown left of its rows when it has several. */
+.cb-group-op {
+    flex: 0 0 auto;
+    width: 3.2rem;
+    text-align: center;
+    padding: .3rem 0;
+    border-radius: 50rem;
+    background: var(--bs-primary);
+    color: #fff;
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    line-height: 1.2;
+    visibility: hidden;
+}
+
+.cb-several .cb-group-op {
+    visibility: visible;
+}
+
+.cb-rows {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    min-width: 0;
+}
+
+.cb-row {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-wrap: wrap;
+}
+
+.cb-row .form-select,
+.cb-row .form-control {
+    border-radius: .5rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+
+.cb-row .cb-field {
+    width: 12rem;
+}
+
+.cb-row .cb-cond {
+    width: 10rem;
+}
+
+.cb-value {
+    flex: 1 1 14rem;
+    display: flex;
+    gap: .6rem;
+    min-width: 12rem;
+}
+
+.cb-value > * {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* Round "−" in front of each condition. */
+.cb-remove {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--bs-danger-bg-subtle);
+    color: var(--bs-danger);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .9rem;
+}
+
+.cb-remove:hover {
+    background: var(--bs-danger);
+    color: #fff;
+}
+
+/* Round trash button: deletes the whole group. */
+.cb-delete-group {
+    position: absolute;
+    top: 1.15rem;
+    right: 1.15rem;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--bs-danger-border-subtle);
+    background: var(--bs-body-bg);
+    color: var(--bs-danger);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--cb-shadow);
+}
+
+.cb-delete-group:hover {
+    background: var(--bs-danger);
+    border-color: var(--bs-danger);
+    color: #fff;
+}
+
+.cb-group-footer {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem 1.5rem;
+    padding: .9rem 1.25rem;
+    background: var(--bs-tertiary-bg);
+    border-top: 1px solid var(--bs-border-color-translucent);
+}
+
+.cb-group-match {
+    display: none;
+    align-items: center;
+    gap: .75rem;
+    padding-left: 1.5rem;
+    border-left: 1px solid var(--bs-border-color);
+}
+
+.cb-several .cb-group-match {
+    display: flex;
+}
+
+/* "Add condition": white pill with a round plus. */
+.cb-add-cond {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .45rem 1rem .45rem .55rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 50rem;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-weight: 600;
+    font-size: .9rem;
+    box-shadow: var(--cb-shadow);
+}
+
+.cb-add-cond i {
+    color: var(--bs-primary);
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.cb-add-cond:hover {
+    border-color: var(--bs-primary);
+}
+
+/* Bottom row: "Add new group" left, Save preset / Apply right. */
+.cb-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .75rem;
+    margin-top: 1.25rem;
+}
+
+.cb-add-group {
+    display: inline-flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .65rem 1.4rem .65rem 1rem;
+    border: 0;
+    border-radius: 50rem;
+    background: var(--bs-primary);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: var(--cb-shadow);
+}
+
+.cb-add-group:hover {
+    filter: brightness(.92);
+}
+
+.cb-actions-end {
+    margin-left: auto;
+    display: flex;
+    gap: .5rem;
+}
+
+.cb-empty {
+    color: var(--bs-secondary-color);
+    margin: 0;
+}
+
+.cb-date {
+    min-width: 8.5rem;
+}
+
+@media (max-width: 767.98px) {
+    .cb-group-body {
+        padding: 1rem 3.5rem 1rem 1rem;
+    }
+    .cb-group-op {
+        display: none;
+    }
+    .cb-row .cb-field,
+    .cb-row .cb-cond {
+        width: calc(50% - 1.6rem);
+    }
+    .cb-group-match {
+        padding-left: 0;
+        border-left: 0;
+    }
+    .cb-actions-end {
+        margin-left: 0;
+        width: 100%;
+    }
+    .cb-actions-end .btn {
+        flex: 1 1 0;
+    }
+}
+
+/* ---- build list ----------------------------------------------------------- */
+
+.build-table thead th {
+    font-size: .8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
+}
+
+.build-table thead th a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.build-table thead th a:hover {
+    color: var(--bs-body-color);
+}
+
+.preset-list .preset-item {
+    margin-bottom: .5rem;
+}
+
+/* Error pages: the code is an <h1> sized by its display-4 wrapper. */
+.display-4 > h1 {
+    font-size: inherit;
+    font-weight: inherit;
+    margin: 0 0 .5rem;
+}

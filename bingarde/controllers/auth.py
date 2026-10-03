@@ -70,7 +70,7 @@ class LoginController(TGController):
         return dict(came_from=safe_came_from(came_from), error=error,
                     google_enabled=google_login.configured(),
                     dev_login=identity.dev_login_enabled(),
-                    csrf_token=identity.csrf_token())
+                    csrf_token=identity.csrf_token(), hide_nav=True)
 
     @expose()
     def dev(self, email="", name="", came_from="/", **kw):

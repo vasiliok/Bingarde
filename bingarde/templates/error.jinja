@@ -1,0 +1,13 @@
+{% extends "bingarde.templates.base" %}
+{% block caption %}{{ code }} - Bingarde{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 640px;">
+    <div class="card page-card mt-5">
+        <div class="card-body p-5 text-center">
+            <div class="display-4 fw-semibold text-body-secondary"><h1>{{ code }}</h1></div>
+            <p class="lead">{{ message }}</p>
+            <a class="btn btn-primary" href="/builds"><i class="bi bi-arrow-left me-1"></i>Back to the build list</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

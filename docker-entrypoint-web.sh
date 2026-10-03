@@ -6,6 +6,10 @@ set -e
 echo "[web] applying database migrations..."
 alembic upgrade head
 
+echo "[web] copying static files for nginx..."
+mkdir -p "${STATIC_ROOT:-/app/staticfiles}"
+cp -a bingarde/public/static/. "${STATIC_ROOT:-/app/staticfiles}/"
+
 echo "[web] starting gunicorn on :8000 ..."
 exec gunicorn --paste production.ini \
     --bind 0.0.0.0:8000 \

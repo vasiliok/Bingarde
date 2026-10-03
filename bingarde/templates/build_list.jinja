@@ -1,0 +1,240 @@
+{% extends "bingarde.templates.base" %}
+
+{% block caption %}Bingarde - Build list{% endblock %}
+
+{% macro sort_header(column, label) -%}
+    <th>
+        <a href="{{ h.query_url(sort=column, order='desc' if sort.order == 'asc' else 'asc', page=None) }}">{{ label }}</a>
+        {% if sort.field == column %}<i class="bi {{ 'bi-sort-up' if sort.order == 'asc' else 'bi-sort-down' }} ms-1"></i>{% endif %}
+    </th>
+{%- endmacro %}
+
+{% macro page_item(page, label, aria=None) -%}
+    {% if page is none %}
+    <li class="page-item disabled"><span class="page-link"{% if aria %} aria-label="{{ aria }}"{% endif %}>{{ label }}</span></li>
+    {% elif page == paging.page %}
+    <li class="page-item active" aria-current="page"><span class="page-link">{{ label }}</span></li>
+    {% else %}
+    <li class="page-item"><a class="page-link" href="{{ h.query_url(page=page) }}"{% if aria %} aria-label="{{ aria }}"{% endif %}>{{ label }}</a></li>
+    {% endif %}
+{%- endmacro %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-4">
+    <div class="row g-4">
+        <aside class="col-lg-3 col-xl-2">
+            <div class="card page-card">
+                <div class="card-header bg-body fw-semibold"><i class="bi bi-bookmarks me-1"></i>Filter presets</div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0 preset-list" id="id-preset-list"></ul>
+                    <p class="small text-body-secondary mb-0" id="id-preset-empty"{% if presets %} hidden{% endif %}>
+                        No presets yet. Build a filter and click <em>Save preset</em>.
+                    </p>
+                </div>
+            </div>
+        </aside>
+
+        <main class="col-lg-9 col-xl-10">
+            {% if error %}<div class="alert alert-warning" role="alert">{{ error }}</div>{% endif %}
+
+            <form id="conditions-form" class="mb-4">
+                <div id="id-condition-builder"></div>
+            </form>
+
+            <div class="card page-card">
+                <form action="/builds/delete" method="post">
+                    <input type="hidden" name="_csrf_token" value="{{ h.csrf_token() }}">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0 build-table">
+                            <thead>
+                                <tr>
+                                    {% if is_admin %}<th style="width: 2.5rem;"></th>{% endif %}
+                                    {{ sort_header("id", "Id") }}
+                                    {{ sort_header("project", "Project") }}
+                                    {{ sort_header("branch", "Branch") }}
+                                    {{ sort_header("platform", "Platform") }}
+                                    {{ sort_header("build", "Build") }}
+                                    {{ sort_header("created", "Date") }}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for p in builds %}
+                                <tr>
+                                    {% if is_admin %}<td><input class="form-check-input" type="checkbox" name="{{ p.id }}" value="{{ p.id }}" aria-label="Select build {{ p.id }}"></td>{% endif %}
+                                    <td><a href="/builds/{{ p.id }}">{{ p.id }}</a></td>
+                                    <td>{{ p.project }}</td>
+                                    <td>{{ p.branch }}</td>
+                                    <td>{{ p.platform }}</td>
+                                    <td>{{ p.build }}</td>
+                                    <td>{{ h.format_date(p.created_at) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="{{ 7 if is_admin else 6 }}" class="text-center text-body-secondary py-4">No builds found.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-footer bg-body d-flex flex-wrap align-items-center gap-3">
+                        {% if is_admin and builds %}
+                        <button type="submit" class="btn btn-danger btn-sm" data-confirm="Delete the selected build(s) and their files?">
+                            <i class="bi bi-trash me-1"></i>Delete
+                        </button>
+                        {% endif %}
+                        <span class="small text-body-secondary ms-auto" id="id-record-range">{{ paging.first_row }}&ndash;{{ paging.last_row }}&nbsp;/&nbsp;{{ paging.total }}</span>
+                        <nav aria-label="Pages">
+                            <ul class="pagination pagination-sm mb-0">
+                                {{ page_item(paging.prev, '<i class="bi bi-chevron-left"></i>'|safe, "Previous page") }}
+                                {% for page in paging.links() %}
+                                    {{ page_item(page, page if page else '&hellip;'|safe) }}
+                                {% endfor %}
+                                {{ page_item(paging.next, '<i class="bi bi-chevron-right"></i>'|safe, "Next page") }}
+                            </ul>
+                        </nav>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+</div>
+
+<div class="modal fade" id="id-save-preset" tabindex="-1" aria-labelledby="id-save-preset-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" id="id-save-preset-form">
+            <div class="modal-header">
+                <h5 class="modal-title" id="id-save-preset-title">Save filter preset</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="id-save-preset-name" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="id-save-preset-name" name="name" maxlength="100" required>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="shared" id="id-save-preset-all" value="all" checked>
+                    <label class="form-check-label" for="id-save-preset-all">Share with everyone</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="shared" id="id-save-preset-me" value="me">
+                    <label class="form-check-label" for="id-save-preset-me">Only for me <span class="text-body-secondary">(can send e-mail notifications)</span></label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="application/json" id="id-page-data">{{ {
+    "fields": filter_fields,
+    "filter": filter_tree,
+    "presets": presets,
+    "sort": {"field": sort.field, "order": sort.order},
+}|tojson }}</script>
+<script src="{{ h.static('js/jquery-1.11.2.js') }}"></script>
+<script src="{{ h.static('js/condition-builder.js') }}"></script>
+<script src="{{ h.static('js/presets.js') }}"></script>
+<script>
+(function() {
+    'use strict';
+
+    var page = JSON.parse(document.getElementById('id-page-data').textContent);
+
+    // Sort parameters of the current URL, carried over into filter links.
+    // A preset opened without them uses its own saved sort.
+    function urlSort() {
+        var cur = new URLSearchParams(window.location.search);
+        var out = new URLSearchParams();
+        ['sort', 'order'].forEach(function(k) {
+            if (cur.has(k)) { out.set(k, cur.get(k)); }
+        });
+        return out;
+    }
+
+    // page.fields: [{name, label, input}], from lib/filters.FIELDS (controllers/builds.py).
+    var fieldTypes = {};
+    page.fields.forEach(function(f) { fieldTypes[f.name] = f.input; });
+    var builder = new ConditionBuilder('#id-condition-builder', {
+        fields: page.fields.map(function(f) { return [f.name, f.label]; }),
+        fieldTypes: fieldTypes,
+        preset: page.filter,
+        noun: 'Builds'
+    });
+
+    var presets = new PresetList('#id-preset-list', {
+        opUrl: '/builds/filter/op',
+        saveUrl: '/builds/filter/save',
+        empty: document.getElementById('id-preset-empty'),
+        href: function(id) {
+            var params = urlSort();
+            params.set('id', id);
+            return '/builds/filter?' + params.toString();
+        }
+    });
+    presets.render(page.presets);
+
+    // ---- builder buttons: save preset / apply ------------------------------
+
+    var actions = document.createElement('div');
+    actions.className = 'cb-actions-end';
+    actions.innerHTML =
+        '<button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#id-save-preset">' +
+        '<i class="bi bi-bookmark me-1"></i>Save preset</button>' +
+        '<button type="submit" class="btn btn-primary"><i class="bi bi-funnel me-1"></i>Apply</button>';
+    document.querySelector('#id-condition-builder .cb-actions').appendChild(actions);
+
+    // Apply (also Enter in a value field): the tree goes in one "q" parameter.
+    document.getElementById('conditions-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var params = urlSort();
+        var tree = builder.serialize();
+        if (tree) { params.set('q', JSON.stringify(tree)); }
+        window.location.href = '/builds/filter?' + params.toString();
+    });
+
+    // ---- save preset dialog ------------------------------------------------
+
+    var saveDialog = document.getElementById('id-save-preset');
+    var saveForm = document.getElementById('id-save-preset-form');
+    var dialogOpen = false;
+    saveDialog.addEventListener('shown.bs.modal', function() { dialogOpen = true; });
+    saveDialog.addEventListener('hidden.bs.modal', function() { dialogOpen = false; });
+
+    // Bootstrap ignores hide() while the dialog is still fading in.
+    function closeSaveDialog() {
+        var modal = bootstrap.Modal.getOrCreateInstance(saveDialog);
+        if (dialogOpen) {
+            modal.hide();
+        } else {
+            saveDialog.addEventListener('shown.bs.modal', function() { modal.hide(); }, {once: true});
+        }
+    }
+
+    saveForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        presets.save({
+            name: saveForm.elements.name.value,
+            shared: saveForm.elements.shared.value,
+            filter: builder.serialize(),
+            sort: page.sort
+        }).then(function(ok) {
+            if (ok) {
+                closeSaveDialog();
+                saveForm.reset();
+            }
+        });
+    });
+
+    // ---- table -------------------------------------------------------------
+
+    document.querySelectorAll('[data-confirm]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            if (!window.confirm(btn.getAttribute('data-confirm'))) { e.preventDefault(); }
+        });
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,51 @@
+# nginx in front of the bingarde app (TurboGears2 on gunicorn).
+#
+# The official nginx image turns this template into conf.d/default.conf at
+# startup, filling in ${NGINX_MAX_BODY_SIZE} from the environment. Other $vars
+# (nginx's own, like $http_host) are left alone because they are not set as
+# environment variables.
+
+server {
+    listen 80;
+    server_name _;
+
+    # Build artifacts can be large. 0 would mean "no limit".
+    client_max_body_size ${NGINX_MAX_BODY_SIZE};
+    # Give slow CI uploads time; the clock restarts with every chunk.
+    client_body_timeout 300s;
+
+    location /static/ {
+        alias /var/www/static/;
+        access_log off;
+        expires 1h;
+    }
+
+    # Uploaded files. Not reachable from outside ("internal"): the app checks
+    # who is asking, then answers with "X-Accel-Redirect: /_store/<path>" and
+    # nginx sends the file from the shared volume.
+    location /_store/ {
+        internal;
+        alias /var/www/store/;
+    }
+
+    location / {
+        proxy_pass http://web:8000;
+        # Use $http_host (keeps the :8080 port) not $host (drops it), so the
+        # app builds redirects like http://localhost:8080/builds and the browser
+        # can follow them.
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Stream uploads to the app as they arrive instead of first writing
+        # the whole body to an nginx temp file.
+        proxy_request_buffering off;
+        proxy_http_version 1.1;
+        # Zip downloads are built by the app: pass them through without
+        # spooling them to disk in nginx.
+        proxy_max_temp_file_size 0;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+}

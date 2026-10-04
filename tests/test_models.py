@@ -3,13 +3,13 @@ from bingarde.model import FilterPreset, Build, BuildFile, User
 
 
 def test_build_as_dict_contains_all_public_fields(db):
-    build = Build(name="build1", project="Alpha",
+    build = Build(name="build1", properties={"sdk": "34"}, project="Alpha",
                 branch="main", platform="ios", build=1000, history="initial commit")
     db.add(build)
     db.commit()
     d = build.as_dict()
     assert d["id"] == build.id
-    assert d["name"] == "build1"
+    assert (d["name"], d["properties"]) == ("build1", {"sdk": "34"})
     assert (d["project"], d["branch"], d["platform"]) == ("Alpha", "main", "ios")
     assert d["build"] == 1000
     assert d["history"] == "initial commit"

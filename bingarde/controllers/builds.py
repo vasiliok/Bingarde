@@ -39,6 +39,14 @@ FIELD_LABELS = {"id": "ID", "created": "Created"}
 TYPED_FIELDS = {"revision"}
 # Fields whose stored values /builds/values/<field> lists: the filter fields, except dates.
 VALUE_FIELDS = {name: column for name, (column, kind) in filters.FIELDS.items() if kind != "date"}
+# How the build page groups files: role, heading, Bootstrap icon.
+FILE_GROUPS = [
+    ("artifact", "Artifacts", "bi-box-seam"),
+    ("symbols", "Debug symbols", "bi-bug"),
+    ("report", "Reports", "bi-clipboard-data"),
+    ("log", "Logs", "bi-journal-text"),
+    ("other", "Other files", "bi-file-earmark"),
+]
 
 
 def filter_fields():
@@ -99,7 +107,11 @@ class BuildPage(TGController):
             build = None
         if build is None:
             abort(404, "Build %s not found" % self.build_id)
-        return dict(build=build, files=build.files, current_page="buildlist")
+        groups = [(role, label, icon, [f for f in build.files if f.role == role])
+                  for role, label, icon in FILE_GROUPS]
+        main = next((f for f in build.files if f.role == "artifact"), None)
+        return dict(build=build, files=build.files, file_groups=[g for g in groups if g[3]],
+                    main_file=main, current_page="buildlist")
 
 
 class FilterController(TGController):

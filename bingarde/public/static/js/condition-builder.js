@@ -36,6 +36,9 @@
         ],
         'lookup': [
             ['eq', 'is', 'lookup'], ['neq', 'is not', 'lookup']
+        ],
+        'text': [
+            ['contains', 'contains', 'text'], ['eq', 'is', 'text'], ['neq', 'is not', 'text']
         ]
     };
 
@@ -259,6 +262,10 @@
             };
             switch (widget) {
                 case 'number': $box.append(number('value', value)); break;
+                case 'text':
+                    $box.append($('<input type="text" class="form-control">').attr('placeholder', 'value')
+                                .val(value == null ? '' : value));
+                    break;
                 case 'days': $box.append(number('days', value)); break;
                 case 'numberPair': $box.append(number('from', pair[0]), number('to', pair[1])); break;
                 case 'date': $box.append(date('date', value)); break;

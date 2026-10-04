@@ -64,8 +64,11 @@
                                     <td><a href="/builds/{{ p.id }}">{{ p.id }}</a></td>
                                     <td>{{ p.project }}</td>
                                     <td>{{ p.branch }}</td>
-                                    <td>{{ p.platform }}</td>
-                                    <td>{{ p.build }}</td>
+                                    <td>
+                                        {{ p.platform }}
+                                        {% if p.config or p.arch %}<div class="small text-body-secondary">{{ [p.config, p.arch]|select|join(" / ") }}</div>{% endif %}
+                                    </td>
+                                    <td>{{ p.build }}{% if p.status != "complete" %} <span class="badge {{ 'text-bg-warning' if p.status == 'uploading' else 'text-bg-danger' }}">{{ p.status }}</span>{% endif %}</td>
                                     <td>{{ h.format_date(p.created_at) }}</td>
                                 </tr>
                                 {% else %}

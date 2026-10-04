@@ -1,13 +1,15 @@
 """REST API v2 (see docs/api.md):
 
-  GET    /api/v2/builds                  list; filters: project, branch, platform, build,
-                                         filter (JSON tree, lib/filters.py); limit, offset
-  POST   /api/v2/builds                  create (JSON); 201
+  GET    /api/v2/builds                  list; filters: project, branch, platform, config,
+                                         arch, status, build, revision (prefix), filter (JSON
+                                         tree, lib/filters.py); limit, offset
+  POST   /api/v2/builds                  create (JSON); 201, or 200 for a rerun of the same build
   GET    /api/v2/builds/<id>
+  PATCH  /api/v2/builds/<id>             status, revision, ci_url, history, name, properties
   DELETE /api/v2/builds/<id>             admins only
   GET    /api/v2/builds/<id>/archive     zip of all files
   GET    /api/v2/builds/<id>/files
-  POST   /api/v2/builds/<id>/files       multipart: one or more files
+  POST   /api/v2/builds/<id>/files       multipart: one or more files [, role]
   GET    /api/v2/files/<id>
   DELETE /api/v2/files/<id>              admins only
 
@@ -21,19 +23,21 @@ from tg import TGController, expose, request
 from webob import Response
 from webob.static import FileIter
 
-from bingarde.lib import filters, identity, notify, storage
+from bingarde.lib import filetypes, filters, identity, notify, storage
 from bingarde.lib.api import (ApiError, endpoint, error_response, invalid, json_body,
                                 methods, not_found)
 from bingarde.model import DBSession, Build, BuildFile
+from bingarde.model.build import FILE_ROLES, BUILD_STATUSES
 
-# The fields that identify a build, all required.
-IDENTITY_FIELDS = ("project", "branch", "platform", "build")
-# Other fields a build may be created with.
-OPTIONAL_FIELDS = ("history", "name")
+# The fields that identify a build; the first four are required.
+IDENTITY_FIELDS = ("project", "branch", "platform", "build", "config", "arch")
+# Fields that a rerun or PATCH may change.
+UPDATABLE_FIELDS = ("status", "revision", "ci_url", "history", "name", "properties")
 # Text limits, as in the model.
-MAX_LENGTH = {"project": 100, "branch": 255, "platform": 50, "name": 255}
+MAX_LENGTH = {"project": 100, "branch": 255, "platform": 50, "config": 50, "arch": 50,
+              "revision": 64, "ci_url": 1024, "name": 255}
 # Exact-match list filters (ignoring case).
-LIST_FILTERS = ("project", "branch", "platform")
+LIST_FILTERS = ("project", "branch", "platform", "config", "arch", "status")
 MAX_LIMIT = 1000
 
 
@@ -50,11 +54,29 @@ def check_field(name, value):
     """A validated value for a build field from a JSON body."""
     if name == "build":
         return to_int(name, value)
+    if name == "properties":
+        if not isinstance(value, dict):
+            raise invalid("properties must be a JSON object")
+        return value
     if not isinstance(value, str):
         raise invalid("%s must be a string" % name)
     if name in MAX_LENGTH and len(value) > MAX_LENGTH[name]:
         raise invalid("%s is longer than %d characters" % (name, MAX_LENGTH[name]))
+    if name == "status" and value not in BUILD_STATUSES:
+        raise invalid("status must be one of %s" % ", ".join(BUILD_STATUSES))
+    if name == "ci_url" and value and not value.lower().startswith(("http://", "https://")):
+        # Shown as a link on the build page.
+        raise invalid("ci_url must be an http(s) URL")
     return value
+
+
+def apply_updates(build, body):
+    for name in UPDATABLE_FIELDS:
+        if name in body:
+            value = check_field(name, body[name])
+            if name == "properties":
+                value = dict(build.properties or {}, **value)
+            setattr(build, name, value)
 
 
 def get_build(build_id):
@@ -95,6 +117,9 @@ class BuildsController(TGController):
                 where.append(func.lower(getattr(Build, name)) == kw[name].lower())
         if kw.get("build"):
             where.append(Build.build == to_int("build", kw["build"]))
+        if kw.get("revision"):
+            # A short hash finds the full one.
+            where.append(func.lower(Build.revision).startswith(kw["revision"].lower()))
         if kw.get("filter"):
             try:
                 where.append(filters.clause(json.loads(kw["filter"])))
@@ -113,17 +138,23 @@ class BuildsController(TGController):
 
     def _create(self, caller):
         body = json_body()
-        unknown = set(body) - set(IDENTITY_FIELDS) - set(OPTIONAL_FIELDS)
+        unknown = set(body) - set(IDENTITY_FIELDS) - set(UPDATABLE_FIELDS)
         if unknown:
             raise invalid("unknown fields: %s" % ", ".join(sorted(unknown)))
-        for name in IDENTITY_FIELDS:
+        for name in IDENTITY_FIELDS[:4]:
             if body.get(name) in (None, ""):
                 raise invalid("%s is required" % name)
-        fields = {name: check_field(name, body[name])
-                  for name in IDENTITY_FIELDS + OPTIONAL_FIELDS if name in body}
-        fields.setdefault("name", "%s-%s-%s" % (fields["project"], fields["platform"], fields["build"]))
+        ident = {name: check_field(name, body.get(name, "")) for name in IDENTITY_FIELDS}
 
-        build = Build(created_by_id=caller.user.id, **fields)
+        existing = DBSession.scalar(select(Build).filter_by(**ident))
+        if existing is not None:
+            # A CI rerun of the same build: keep one record, refresh what was sent.
+            apply_updates(existing, body)
+            DBSession.flush()
+            return existing.as_dict(), 200
+
+        build = Build(status="complete", created_by_id=caller.user.id, properties={}, **ident)
+        apply_updates(build, body)
         DBSession.add(build)
         DBSession.flush()
         notify.notify_new_build(build)
@@ -143,9 +174,20 @@ class BuildController(TGController):
     @expose()
     @endpoint
     def index(self, **kw):
-        if methods("GET", "DELETE") == "GET":
+        method = methods("GET", "PATCH", "DELETE")
+        if method == "GET":
             identity.require()
             return get_build(self.build_id).as_dict()
+        if method == "PATCH":
+            identity.require(write=True)
+            build = get_build(self.build_id)
+            body = json_body()
+            unknown = set(body) - set(UPDATABLE_FIELDS)
+            if unknown:
+                raise invalid("these fields cannot be changed: %s" % ", ".join(sorted(unknown)))
+            apply_updates(build, body)
+            DBSession.flush()
+            return build.as_dict()
         identity.require(write=True, admin=True)
         build = get_build(self.build_id)
         storage.delete_after_commit([f.path for f in build.files])
@@ -160,7 +202,7 @@ class BuildController(TGController):
         build = get_build(self.build_id)
         archive, size = storage.zip_files(build.files)
         resp = Response(content_type="application/zip")
-        resp.headers["Content-Disposition"] = "attachment; filename=%s" % storage.download_name(build.name)
+        resp.headers["Content-Disposition"] = "attachment; filename=%s" % storage.download_name(build.display_name)
         resp.content_length = size
         resp.app_iter = FileIter(archive)
         return resp
@@ -172,21 +214,36 @@ class BuildController(TGController):
             identity.require()
             return {"files": [f.as_dict() for f in get_build(self.build_id).files]}
         caller = identity.require(write=True)
-        return self._upload(get_build(self.build_id), caller)
+        return self._upload(get_build(self.build_id), kw.get("role"), caller)
 
-    def _upload(self, build, caller):
+    def _upload(self, build, role, caller):
         uploads = [value for value in request.POST.values()
                    if hasattr(value, "file") and getattr(value, "filename", None)]
         if not uploads:
             raise invalid("send one or more files as multipart/form-data")
-        result = []
+        if role and role not in FILE_ROLES:
+            raise invalid("role must be one of %s" % ", ".join(FILE_ROLES))
+        result, created = [], False
         for upload in uploads:
-            path, size = storage.save_upload(build.id, upload.filename, upload.file)
-            build_file = BuildFile(build=build, path=path, size=size, uploaded_by_id=caller.user.id)
+            original = storage.safe_name(upload.filename)
+            path, size, sha256 = storage.save_upload(build.id, upload.filename, upload.file)
+            same = next((f for f in build.files
+                         if f.sha256 == sha256 and f.display_name == original), None)
+            if same is not None:
+                # Identical file already stored for this build: keep the stored copy.
+                storage.discard(path)
+                result.append(dict(same.as_dict(), existing=True))
+                continue
+            build_file = BuildFile(
+                build=build, path=path, size=size, sha256=sha256, original_name=original,
+                role=role or filetypes.detect_role(original),
+                content_type=filetypes.guess_content_type(original, getattr(upload, "type", None)),
+                uploaded_by_id=caller.user.id)
             DBSession.add(build_file)
             DBSession.flush()
-            result.append(build_file.as_dict())
-        return {"files": result}, 201
+            result.append(dict(build_file.as_dict(), existing=False))
+            created = True
+        return {"files": result}, 201 if created else 200
 
     @expose()
     def _default(self, *args, **kw):

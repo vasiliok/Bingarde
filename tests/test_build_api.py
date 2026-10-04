@@ -23,6 +23,7 @@ def test_create_returns_201_and_the_build(app, db):
     assert (p["project"], p["branch"], p["platform"]) == ("game", "main", "ios")
     assert p["build"] == 1000
     assert p["history"] == "initial commit"
+    assert p["status"] == "complete"
     assert p["created_at"].startswith("20") and "T" in p["created_at"]
     assert db.get(Build, p["id"]) is not None
 
@@ -47,6 +48,9 @@ def test_missing_required_field_is_422(app, db, missing):
     ("build", True, "integer"),
     ("project", 5, "string"),
     ("project", "x" * 101, "longer than"),
+    ("status", "done", "status"),
+    ("properties", [1, 2], "properties"),
+    ("ci_url", "javascript:alert(1)", "http"),
     ("kind", "zip", "unknown fields"),
 ])
 def test_invalid_values_are_422(app, db, field, value, words):
@@ -123,6 +127,24 @@ def test_list_limit_and_offset(app):
     api_error(app.get("/api/v2/builds", {"build": "x"}, expect_errors=True), 422)
 
 
+# ---- update ----------------------------------------------------------------------
+
+def test_patch_changes_only_what_is_sent(app):
+    created = create_build(app, status="uploading", properties={"sdk": "34"})
+    resp = app.patch_json("/api/v2/builds/%d" % created["id"],
+                          {"status": "complete", "properties": {"tests": "passed"}})
+    updated = ok(resp)
+    assert updated["status"] == "complete"
+    assert updated["properties"] == {"sdk": "34", "tests": "passed"}
+    assert updated["history"] == created["history"]
+
+
+def test_patch_cannot_change_the_build_identity(app):
+    created = create_build(app)
+    resp = app.patch_json("/api/v2/builds/%d" % created["id"], {"build": 5}, expect_errors=True)
+    assert "cannot be changed: build" in api_error(resp, 422)["message"]
+
+
 # ---- delete ----------------------------------------------------------------------
 
 def test_delete_answers_204_and_removes_the_build(app, db):
@@ -183,3 +205,12 @@ def test_failed_create_sends_no_mail(app, db, monkeypatch):
     app.post_json("/api/v2/builds", build_fields(project="MatchMe", build="not-a-number"),
                   expect_errors=True)
     assert sent == []
+
+
+def test_rerun_sends_no_second_mail(app, db, monkeypatch):
+    sent = _capture_mail(monkeypatch)
+    _preset(db, "fay@example.com", True, "MatchMe")
+    create_build(app, project="MatchMe", build=9)
+    resp = app.post_json("/api/v2/builds", build_fields(project="MatchMe", build=9))
+    assert resp.status_int == 200
+    assert len(sent) == 1

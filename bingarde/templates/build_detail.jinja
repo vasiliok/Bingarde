@@ -1,6 +1,12 @@
 {% extends "bingarde.templates.base" %}
 
-{% block caption %}Build {{ build.id }} - Bingarde{% endblock %}
+{% block caption %}{{ build.display_name }} - Bingarde{% endblock %}
+
+{% macro status_badge(status) -%}
+    {% if status == "complete" %}<span class="badge text-bg-success">complete</span>
+    {% elif status == "uploading" %}<span class="badge text-bg-warning">uploading</span>
+    {% else %}<span class="badge text-bg-danger">{{ status }}</span>{% endif %}
+{%- endmacro %}
 
 {% block content %}
 <div class="container pb-4" style="max-width: 1100px;">
@@ -13,38 +19,77 @@
 
     <div class="card page-card mb-4">
         <div class="card-body p-4">
-            <h2 class="h4 mb-3">{{ build.name }} <small class="text-body-secondary fw-normal">#{{ build.id }}</small></h2>
+            <div class="d-flex flex-wrap align-items-start gap-3 mb-3">
+                <h2 class="h4 mb-0">{{ build.display_name }} <small class="text-body-secondary fw-normal">#{{ build.id }}</small></h2>
+                {{ status_badge(build.status) }}
+                {% if main_file %}
+                <a class="btn btn-primary ms-auto" href="/files/{{ main_file.id }}" id="id-main-download">
+                    <i class="bi bi-download me-1"></i>Download {{ main_file.display_name }}
+                    <span class="opacity-75">({{ h.format_size(main_file.size) }})</span>
+                </a>
+                {% endif %}
+            </div>
             <dl class="row mb-0">
                 <dt class="col-sm-2 text-body-secondary fw-normal">Project</dt><dd class="col-sm-10">{{ build.project }}</dd>
                 <dt class="col-sm-2 text-body-secondary fw-normal">Branch</dt><dd class="col-sm-10">{{ build.branch }}</dd>
-                <dt class="col-sm-2 text-body-secondary fw-normal">Platform</dt><dd class="col-sm-10">{{ build.platform }}</dd>
+                <dt class="col-sm-2 text-body-secondary fw-normal">Platform</dt>
+                <dd class="col-sm-10">{{ build.platform }}{% if build.config %} · {{ build.config }}{% endif %}{% if build.arch %} · {{ build.arch }}{% endif %}</dd>
                 <dt class="col-sm-2 text-body-secondary fw-normal">Build</dt><dd class="col-sm-10">{{ build.build }}</dd>
-                {% if build.kind %}<dt class="col-sm-2 text-body-secondary fw-normal">Kind</dt><dd class="col-sm-10">{{ build.kind }}</dd>{% endif %}
-                <dt class="col-sm-2 text-body-secondary fw-normal">Created</dt><dd class="col-sm-10 mb-0">{{ h.format_date(build.created_at) }}{% if build.created_by %} by {{ build.created_by.email }}{% endif %}</dd>
+                {% if build.revision %}
+                <dt class="col-sm-2 text-body-secondary fw-normal">Revision</dt>
+                <dd class="col-sm-10"><code class="user-select-all" title="{{ build.revision }}">{{ build.revision }}</code></dd>
+                {% endif %}
+                {% if build.ci_url %}
+                <dt class="col-sm-2 text-body-secondary fw-normal">CI job</dt>
+                <dd class="col-sm-10"><a href="{{ build.ci_url }}" rel="noopener noreferrer" target="_blank">{{ build.ci_url }} <i class="bi bi-box-arrow-up-right small"></i></a></dd>
+                {% endif %}
+                <dt class="col-sm-2 text-body-secondary fw-normal">Created</dt>
+                <dd class="col-sm-10 mb-0">{{ h.format_date(build.created_at) }}{% if build.created_by %} by {{ build.created_by.email }}{% endif %}</dd>
             </dl>
         </div>
     </div>
+
+    {% if build.properties %}
+    <div class="card page-card mb-4">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-tags me-1"></i>Properties</div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" id="id-properties-table">
+                <tbody>
+                {% for key, value in build.properties|dictsort %}
+                    <tr><th class="fw-normal text-body-secondary ps-3" style="width: 12rem;">{{ key }}</th>
+                        <td>{{ value if value is string else value|tojson }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="card page-card mb-4">
         <div class="card-header bg-body d-flex align-items-center">
             <span class="fw-semibold"><i class="bi bi-files me-1"></i>Files</span>
             {% if files %}
-            <a class="btn btn-outline-primary btn-sm ms-auto" href="/api/v2/builds/{{ build.id }}/archive"><i class="bi bi-download me-1"></i>Download all as zip</a>
+            <a class="btn btn-outline-primary btn-sm ms-auto" href="/api/v2/builds/{{ build.id }}/archive"><i class="bi bi-file-zip me-1"></i>Download all as zip</a>
             {% endif %}
         </div>
         {% if files %}
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0" id="id-file-table">
-                <thead><tr><th>File</th><th>Size</th><th>Uploaded</th></tr></thead>
-                <tbody>
-                {% for f in files %}
+                <thead><tr><th>File</th><th>Size</th><th>SHA-256</th><th>Uploaded</th></tr></thead>
+                {% for role, label, icon, group in file_groups %}
+                <tbody class="file-group" data-role="{{ role }}">
+                    <tr class="table-light"><th colspan="4" class="small text-uppercase text-body-secondary fw-semibold">
+                        <i class="bi {{ icon }} me-1"></i>{{ label }} <span class="fw-normal">({{ group|length }})</span></th></tr>
+                    {% for f in group %}
                     <tr>
-                        <td><i class="bi bi-file-earmark me-1 text-body-secondary"></i><a href="/files/{{ f.id }}">{{ f.path.rsplit('/', 1)[-1] }}</a></td>
-                        <td>{{ h.format_size(f.size) }}</td>
-                        <td>{{ h.format_date(f.uploaded_at) }}</td>
+                        <td><a href="/files/{{ f.id }}">{{ f.display_name }}</a></td>
+                        <td class="text-nowrap">{{ h.format_size(f.size) }}</td>
+                        <td>{% if f.sha256 %}<code class="small user-select-all" title="{{ f.sha256 }}">{{ f.sha256[:12] }}…</code>{% else %}<span class="text-body-secondary">—</span>{% endif %}</td>
+                        <td class="text-nowrap">{{ h.format_date(f.uploaded_at) }}</td>
                     </tr>
-                {% endfor %}
+                    {% endfor %}
                 </tbody>
+                {% endfor %}
             </table>
         </div>
         {% else %}
@@ -55,7 +100,7 @@
     <div class="card page-card">
         <div class="card-header bg-body fw-semibold"><i class="bi bi-clock-history me-1"></i>History</div>
         <div class="card-body">
-            <textarea id="build-history" class="form-control font-monospace" rows="16" readonly>{{ build.history }}</textarea>
+            <textarea id="build-history" class="form-control font-monospace" rows="12" readonly>{{ build.history }}</textarea>
         </div>
     </div>
 </div>

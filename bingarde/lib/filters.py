@@ -31,6 +31,10 @@ FIELDS = {
     "project": (Build.project, "str"),
     "branch": (Build.branch, "str"),
     "platform": (Build.platform, "str"),
+    "config": (Build.config, "str"),
+    "arch": (Build.arch, "str"),
+    "status": (Build.status, "str"),
+    "revision": (Build.revision, "str"),
     "build": (Build.build, "int"),
     "created": (Build.created_at, "date"),
 }

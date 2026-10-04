@@ -6,10 +6,10 @@ tied to the database transaction: files written by a request that fails are
 removed again, and files of deleted rows are removed only after the commit.
 """
 import datetime
+import hashlib
 import logging
 import os
 import re
-import shutil
 import tempfile
 import zipfile
 
@@ -45,7 +45,7 @@ def safe_name(filename):
 
 
 def save_upload(build_id, filename, fileobj):
-    """Copy an uploaded file into the store. Returns (relative path, size)."""
+    """Copy an uploaded file into the store. Returns (relative path, size, sha256 hex)."""
     rel_dir = "%s/p%d" % (datetime.date.today().strftime("%Y/%m"), build_id)
     abs_dir = absolute_path(rel_dir)
     os.makedirs(abs_dir, exist_ok=True)
@@ -62,14 +62,25 @@ def save_upload(build_id, filename, fileobj):
         except FileExistsError:
             counter += 1
 
+    digest = hashlib.sha256()
     with os.fdopen(fd, "wb") as out:
-        shutil.copyfileobj(fileobj, out, COPY_CHUNK)
+        while True:
+            chunk = fileobj.read(COPY_CHUNK)
+            if not chunk:
+                break
+            digest.update(chunk)
+            out.write(chunk)
         size = out.tell()
 
     txn = transaction.get()
     txn.addAfterCommitHook(lambda ok: ok or _remove(full))
     txn.addAfterAbortHook(lambda: _remove(full))
-    return "%s/%s" % (rel_dir, candidate), size
+    return "%s/%s" % (rel_dir, candidate), size, digest.hexdigest()
+
+
+def discard(rel_path):
+    """Remove a file written by this request right away (e.g. a duplicate upload)."""
+    _remove(absolute_path(rel_path))
 
 
 def delete_after_commit(rel_paths):

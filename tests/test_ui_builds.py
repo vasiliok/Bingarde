@@ -59,8 +59,8 @@ def test_unknown_sort_column_falls_back_to_id(wsgi_app, app):
 
 
 def test_paging(wsgi_app, app):
-    for _ in range(12):
-        create_build(app)
+    for build in range(12):
+        create_build(app, build=build)
     browser, _ = login(wsgi_app, "user@example.com")
     first = browser.get("/builds?sort=id&order=asc")
     second = browser.get("/builds?sort=id&order=asc&page=2")
@@ -101,8 +101,8 @@ def test_adhoc_filter_narrows_the_list(wsgi_app, app):
 
 
 def test_filter_without_params_shows_everything(wsgi_app, app):
-    create_build(app)
-    create_build(app)
+    create_build(app, build=1)
+    create_build(app, build=2)
     browser, _ = login(wsgi_app, "user@example.com")
     assert total_shown(browser.get("/builds/filter/")) == 2
 

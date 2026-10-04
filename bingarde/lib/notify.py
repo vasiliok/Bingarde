@@ -61,7 +61,7 @@ def build_messages(build, recipients):
         msg["From"] = config.get("mail_from", "bingarde@localhost")
         msg["To"] = email
         msg.set_content(MESSAGE.format(
-            url=url, name=build.name, project=build.project, branch=build.branch,
+            url=url, name=build.display_name, project=build.project, branch=build.branch,
             platform=build.platform, build=build.build, preset=preset))
         messages.append(msg)
     return messages

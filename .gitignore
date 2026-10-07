@@ -12,3 +12,4 @@ bingarde/static/doc/*
 temp/*
 !temp/.dummy
 scripts/cache/
+.claude/

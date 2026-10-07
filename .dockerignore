@@ -1,8 +1,9 @@
 .git
 .idea
 .DS_Store
+.claude
 env/
 *.pyc
 **/__pycache__/
-logs/*.log
-temp/*
+demo/
+docs/

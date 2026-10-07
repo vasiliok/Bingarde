@@ -59,6 +59,22 @@ python3 demo/seed.py --from https://example.com/demo-builds.zip
 
 ## Upload from CI
 
+[`scripts/bingarde-upload.py`](scripts/bingarde-upload.py) does the whole upload in one
+step. It needs only Python 3, streams big files from disk, and marks the build `failed` if
+anything goes wrong:
+
+```bash
+export BINGARDE_URL=https://bingarde.example.com BINGARDE_TOKEN=bg_...
+python3 scripts/bingarde-upload.py \
+  --project game --branch main --platform windows --config release --arch x86_64 \
+  --build $CI_BUILD_NUMBER --revision $GIT_COMMIT --ci-url $CI_JOB_URL \
+  --property compiler="MSVC 19.44" \
+  Game.exe Game.pdb build.log
+```
+
+Add `--status failed` to keep the logs of a broken build, or `--role` to set the role of all
+files. The same steps with plain `curl`:
+
 ```bash
 API=https://bingarde.example.com/api/v2
 AUTH="Authorization: Bearer $BINGARDE_TOKEN"

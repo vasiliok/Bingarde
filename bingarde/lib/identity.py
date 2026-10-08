@@ -146,23 +146,27 @@ def csrf_token():
     return session["csrf_token"]
 
 
-def check_csrf():
-    """Raise AuthError(403) unless the request carries this session's CSRF token."""
+def check_csrf(form=True):
+    """Raise AuthError(403) unless the request carries this session's CSRF token.
+
+    ``form=False`` takes the token from the header only, so the body is not read."""
     expected = session.get("csrf_token") if _has_session_cookie() else None
-    sent = request.headers.get(CSRF_HEADER) or request.POST.get(CSRF_FIELD)
+    sent = request.headers.get(CSRF_HEADER) or (request.POST.get(CSRF_FIELD) if form else None)
     if not expected or not sent or not hmac.compare_digest(str(expected), str(sent)):
         raise AuthError(403, "missing or invalid CSRF token")
 
 
 # ---- guards -------------------------------------------------------------------
 
-def require(write=False, admin=False):
-    """Check the caller for an API call. Returns the Identity or raises AuthError."""
+def require(write=False, admin=False, form_csrf=True):
+    """Check the caller for an API call. Returns the Identity or raises AuthError.
+
+    ``form_csrf=False``: see check_csrf."""
     identity = current_identity()
     if identity is None:
         raise AuthError(401, "authentication required: send 'Authorization: Bearer <token>'")
     if identity.via == "session" and request.method not in ("GET", "HEAD", "OPTIONS"):
-        check_csrf()
+        check_csrf(form=form_csrf)
     if write and identity.scope != "write":
         raise AuthError(403, "this API token is read-only")
     if admin and not identity.is_admin:

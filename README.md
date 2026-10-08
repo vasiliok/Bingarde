@@ -111,6 +111,7 @@ Set with environment variables (see `docker-compose.yml`):
 | `DEV_LOGIN` | `1` = e-mail-only login, for local demos only |
 | `STORE_DIR` | Where uploaded files are kept |
 | `BINGARDE_PORT`, `BINGARDE_MAX_UPLOAD` | Host port (8080) and upload limit (20g) |
+| `MAX_REQUEST_BODY` | Largest other request body in bytes (2 MiB) |
 | `SMTP_*` | Optional e-mail on new builds |
 
 ## Tests
@@ -119,7 +120,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-181 pytest tests against PostgreSQL.
+220 pytest tests against PostgreSQL.
 
 ## Stack
 

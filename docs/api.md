@@ -44,13 +44,19 @@ Deleting builds and files also needs an admin: a user whose e-mail is in `ADMIN_
 
 A signed-in browser session works too; its `POST`, `PATCH` and `DELETE` requests must then
 carry the session's CSRF token (header `X-CSRF-Token`). Requests with a Bearer token need no
-CSRF token.
+CSRF token. A file upload checks the token before it reads the body, so it must come in the
+header, not as a form field.
 
 ## Requests, responses and errors
 
 Request bodies are JSON (`Content-Type: application/json`), except file uploads, which are
 `multipart/form-data`. Responses are JSON: the object itself, or for lists an object such as
 `{"builds": [...], "total": 42}`. `DELETE` answers `204 No Content`.
+
+A request body needs a `Content-Length` header (no chunked encoding). File uploads may be as
+large as the server allows (`BINGARDE_MAX_UPLOAD`, 20 GB by default); any other body may be
+at most 2 MiB (`MAX_REQUEST_BODY`). An upload without valid write access is refused before its
+body is read.
 
 Errors use the HTTP status and one body shape:
 
@@ -65,6 +71,8 @@ Errors use the HTTP status and one body shape:
 | 403 | `forbidden` | read-only token, not an admin, or a missing CSRF token |
 | 404 | `not_found` | no such build, file or path |
 | 405 | `method_not_allowed` | e.g. `PUT` |
+| 411 | `length_required` | a body without `Content-Length` |
+| 413 | `too_large` | a body over the limit (nginx answers this one with an HTML page) |
 | 415 | `unsupported_media_type` | a body that is not `application/json` |
 | 422 | `invalid` | a missing, unknown or invalid field; the message names it |
 | 500 | `internal` | an unexpected server error |

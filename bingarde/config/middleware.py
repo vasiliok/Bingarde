@@ -24,6 +24,7 @@ ENV_OVERRIDES = {
     "GOOGLE_CLIENT_ID": "google_client_id",
     "GOOGLE_CLIENT_SECRET": "google_client_secret",
     "XACCEL": "xaccel",
+    "MAX_REQUEST_BODY": "max_request_body",
 }
 
 

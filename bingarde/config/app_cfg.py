@@ -9,6 +9,7 @@ import bingarde
 from bingarde import model
 from bingarde.controllers.root import RootController
 from bingarde.lib import app_globals, helpers
+from bingarde.lib.limits import BodyLimitWrapper
 
 base_config = FullStackApplicationConfigurator()
 base_config.update_blueprint({
@@ -30,3 +31,6 @@ base_config.update_blueprint({
     "session.enabled": True,
     "i18n.enabled": False,
 })
+# Default position: inside the session and transaction wrappers, before dispatch
+# reads the body.
+base_config.register_application_wrapper(BodyLimitWrapper)

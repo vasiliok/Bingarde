@@ -51,6 +51,11 @@ def error_response(status, code, message):
     return json_response({"error": {"code": code, "message": message}}, status)
 
 
+def auth_error_response(exc):
+    """The JSON error for an identity.AuthError."""
+    return error_response(exc.status, AUTH_CODES.get(exc.status, "forbidden"), str(exc))
+
+
 def json_body():
     """The request's JSON object (an empty dict for an empty body)."""
     if not request.body:
@@ -82,7 +87,7 @@ def endpoint(func):
             result = func(*args, **kwargs)
         except AuthError as exc:
             transaction.doom()
-            return error_response(exc.status, AUTH_CODES.get(exc.status, "forbidden"), str(exc))
+            return auth_error_response(exc)
         except ApiError as exc:
             transaction.doom()
             return error_response(exc.status, exc.code, str(exc))

@@ -5,14 +5,36 @@
 # (nginx's own, like $http_host) are left alone because they are not set as
 # environment variables.
 
+# Open connections per client address (see limit_conn below).
+limit_conn_zone $binary_remote_addr zone=perip:10m;
+
 server {
     listen 80;
     server_name _;
 
-    # Build artifacts can be large. 0 would mean "no limit".
-    client_max_body_size ${NGINX_MAX_BODY_SIZE};
-    # Give slow CI uploads time; the clock restarts with every chunk.
-    client_body_timeout 300s;
+    # Only file uploads may be large (see the upload location). This matches
+    # the app's max_request_body.
+    client_max_body_size 2m;
+    client_header_timeout 15s;
+    client_body_timeout 30s;
+    limit_conn perip 64;
+
+    # Use $http_host (keeps the :8080 port) not $host (drops it), so the app
+    # builds redirects like http://localhost:8080/builds and the browser can
+    # follow them.
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # nginx sends "Connection: close" to the app (its default). Keep it: when
+    # the app refuses an upload early, gunicorn then closes the connection
+    # instead of reading the rest of the body.
+    proxy_http_version 1.1;
+    # Zip downloads are built by the app: pass them through without spooling
+    # them to disk in nginx.
+    proxy_max_temp_file_size 0;
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
 
     location /static/ {
         alias /var/www/static/;
@@ -28,24 +50,20 @@ server {
         alias /var/www/store/;
     }
 
+    # File uploads. Build artifacts can be large (0 would mean "no limit").
+    # They stream to the app as they arrive instead of first going to an nginx
+    # temp file; the app checks the API token before it reads any of the body.
+    location ~ ^/api/v2/builds/[^/]+/files/?$ {
+        client_max_body_size ${NGINX_MAX_BODY_SIZE};
+        # Give slow CI uploads time; the clock restarts with every chunk.
+        client_body_timeout 300s;
+        proxy_request_buffering off;
+        proxy_pass http://web:8000;
+    }
+
+    # Everything else: nginx reads the (small) body first, so a slow client
+    # never holds an app thread.
     location / {
         proxy_pass http://web:8000;
-        # Use $http_host (keeps the :8080 port) not $host (drops it), so the
-        # app builds redirects like http://localhost:8080/builds and the browser
-        # can follow them.
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Stream uploads to the app as they arrive instead of first writing
-        # the whole body to an nginx temp file.
-        proxy_request_buffering off;
-        proxy_http_version 1.1;
-        # Zip downloads are built by the app: pass them through without
-        # spooling them to disk in nginx.
-        proxy_max_temp_file_size 0;
-        proxy_read_timeout 600s;
-        proxy_send_timeout 600s;
     }
 }

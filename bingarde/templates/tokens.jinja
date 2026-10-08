@@ -31,8 +31,8 @@
                         <label class="form-check-label" for="id-scope-read">read <span class="text-body-secondary">(list and download)</span></label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="scope" id="id-scope-write" value="write">
-                        <label class="form-check-label" for="id-scope-write">write <span class="text-body-secondary">(also create builds and upload)</span></label>
+                        <input class="form-check-input" type="radio" name="scope" id="id-scope-write" value="write"{% if not can_write %} disabled{% endif %}>
+                        <label class="form-check-label" for="id-scope-write">write <span class="text-body-secondary">{% if can_write %}(also create builds and upload){% else %}(your account has read-only access){% endif %}</span></label>
                     </div>
                 </div>
                 <div class="col-md-2 d-grid">
@@ -54,7 +54,7 @@
                 <tr>
                     <td>{{ t.name }}</td>{% if is_admin %}<td>{{ t.user.email }}</td>{% endif %}
                     <td><code>{{ t.token_prefix }}…</code></td>
-                    <td>{{ t.scope }}</td>
+                    <td>{{ t.scope }}{% if t.scope == "write" and not h.can_write(t.user) %} <span class="badge text-bg-warning" title="The owner has read-only access, so this token can only read">read only</span>{% endif %}</td>
                     <td>{{ h.format_date(t.created_at) }}</td>
                     <td>{{ h.format_date(t.last_used_at) or "never" }}</td>
                     <td>{% if t.revoked_at %}<span class="badge text-bg-secondary">revoked</span>{% else %}<span class="badge text-bg-success">active</span>{% endif %}</td>

@@ -67,10 +67,10 @@ def test_session_upload_needs_the_csrf_header(wsgi_app, anon):
     assert not body.touched
 
 
-def test_session_upload_with_the_csrf_header_works(wsgi_app, app):
-    build = create_build(app)
+def test_session_upload_with_the_csrf_header_works(wsgi_app, anon):
     browser, csrf = login(wsgi_app, "pat@example.com")
     browser.extra_environ["HTTP_X_CSRF_TOKEN"] = csrf
+    build = create_build(browser)
     resp = upload(browser, build["id"], "app.ipa", b"ipa")
     assert resp.status_int == 201, resp.text
 

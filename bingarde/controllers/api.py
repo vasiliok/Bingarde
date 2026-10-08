@@ -14,7 +14,9 @@
   DELETE /api/v2/files/<id>              admins only
 
 Every call needs an API token (``Authorization: Bearer bg_...``) or a login
-session. Changes need write access; deleting needs an admin.
+session. Changes need write access (see lib/identity.py), and an existing build
+can only be changed by the user who created it or an admin; deleting needs an
+admin.
 """
 import json
 
@@ -77,6 +79,12 @@ def apply_updates(build, body):
             if name == "properties":
                 value = dict(build.properties or {}, **value)
             setattr(build, name, value)
+
+
+def check_may_change(caller, build):
+    if not caller.may_change(build):
+        raise identity.AuthError(
+            403, "build %d belongs to another user; only they or an admin can change it" % build.id)
 
 
 def get_build(build_id):
@@ -149,6 +157,7 @@ class BuildsController(TGController):
         existing = DBSession.scalar(select(Build).filter_by(**ident))
         if existing is not None:
             # A CI rerun of the same build: keep one record, refresh what was sent.
+            check_may_change(caller, existing)
             apply_updates(existing, body)
             DBSession.flush()
             return existing.as_dict(), 200
@@ -179,8 +188,9 @@ class BuildController(TGController):
             identity.require()
             return get_build(self.build_id).as_dict()
         if method == "PATCH":
-            identity.require(write=True)
+            caller = identity.require(write=True)
             build = get_build(self.build_id)
+            check_may_change(caller, build)
             body = json_body()
             unknown = set(body) - set(UPDATABLE_FIELDS)
             if unknown:
@@ -217,6 +227,7 @@ class BuildController(TGController):
         return self._upload(get_build(self.build_id), kw.get("role"), caller)
 
     def _upload(self, build, role, caller):
+        check_may_change(caller, build)
         uploads = [value for value in request.POST.values()
                    if hasattr(value, "file") and getattr(value, "filename", None)]
         if not uploads:

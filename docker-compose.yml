@@ -9,7 +9,8 @@
 #     docker compose --profile run up --build
 #     -> open http://localhost:8080
 #   Optional: BINGARDE_PORT=8081 (host port), BINGARDE_MAX_UPLOAD=50g
-#   (largest upload nginx accepts, default 20g).
+#   (largest upload nginx accepts, default 20g), BINGARDE_BIND=0.0.0.0
+#   (listen on all interfaces, not just localhost).
 #
 # The "db" service has no profile, so it starts for either one.
 
@@ -53,9 +54,11 @@ services:
       # Demo value only. Set a long random string for any real deployment.
       SESSION_SECRET: change-me-demo-only
       BASE_URL: http://localhost:8080/
-      # Demo: e-mail-only login, and this address is admin.
+      # Demo: e-mail-only login, this address is admin, and every user can
+      # write. For a real deployment turn DEV_LOGIN off and list the writers.
       DEV_LOGIN: "1"
       ADMIN_EMAILS: admin@example.org
+      WRITER_DOMAINS: "*"
       # Real Google login: export these before "docker compose up".
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -73,7 +76,9 @@ services:
     depends_on:
       - web
     ports:
-      - "${BINGARDE_PORT:-8080}:80"
+      # Only this machine can open the demo (DEV_LOGIN lets anyone sign in as
+      # admin). BINGARDE_BIND=0.0.0.0 opens it to the network.
+      - "${BINGARDE_BIND:-127.0.0.1}:${BINGARDE_PORT:-8080}:80"
     environment:
       NGINX_MAX_BODY_SIZE: ${BINGARDE_MAX_UPLOAD:-20g}
     volumes:

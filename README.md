@@ -43,8 +43,9 @@ docker compose --profile run up --build -d
 Already cloned without `--recurse-submodules`? Run `git submodule update --init` to get `demo/`.
 
 Open <http://localhost:8080> and sign in with any e-mail. The demo setup uses a
-developer login, and `admin@example.org` is an admin. Turn `DEV_LOGIN` off for a
-real deployment.
+developer login, `admin@example.org` is an admin, and every user may write. The demo
+listens on localhost only. For a real deployment turn `DEV_LOGIN` off, set your own
+`SESSION_SECRET` (the app refuses the demo one), and list the writers.
 
 Load the demo builds (create a `write` token on the **API tokens** page first).
 `--from` says where the build files come from: a folder, a `.zip` file, or the URL of a `.zip`,
@@ -108,9 +109,11 @@ Set with environment variables (see `docker-compose.yml`):
 | `BASE_URL` | Public URL of the site |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
 | `ALLOWED_EMAIL_DOMAINS`, `ADMIN_EMAILS` | Who may sign in, who is admin |
+| `WRITER_EMAILS`, `WRITER_DOMAINS` | Who may create builds and write tokens (`*` = everyone); others only read |
 | `DEV_LOGIN` | `1` = e-mail-only login, for local demos only |
 | `STORE_DIR` | Where uploaded files are kept |
 | `BINGARDE_PORT`, `BINGARDE_MAX_UPLOAD` | Host port (8080) and upload limit (20g) |
+| `BINGARDE_BIND` | Host address nginx listens on (`127.0.0.1`; `0.0.0.0` = the network) |
 | `MAX_REQUEST_BODY` | Largest other request body in bytes (2 MiB) |
 | `SMTP_*` | Optional e-mail on new builds |
 
@@ -120,7 +123,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-220 pytest tests against PostgreSQL.
+237 pytest tests against PostgreSQL.
 
 ## Stack
 

@@ -1,7 +1,8 @@
 """/tokens: personal API tokens for CI machines.
 
 Users see and revoke their own tokens; admins see and revoke everyone's.
-A new token is shown exactly once, right after it is created.
+A new token is shown exactly once, right after it is created. Only writers
+(see lib/identity.py) can create "write" tokens.
 """
 import datetime
 
@@ -19,6 +20,7 @@ class TokensController(TGController):
         if not ident.is_admin:
             query = query.where(ApiToken.user_id == ident.user.id)
         return dict(user=ident.user, is_admin=ident.is_admin,
+                    can_write=identity.can_write(ident.user),
                     tokens=DBSession.scalars(query).all(),
                     new_token=new_token, error=error,
                     csrf_token=identity.csrf_token(), current_page="tokens")
@@ -34,6 +36,9 @@ class TokensController(TGController):
         name = name.strip()[:100]
         if not name or scope not in ("read", "write"):
             return self._page(ident, error="give the token a name and pick read or write")
+        if scope == "write" and not identity.can_write(ident.user):
+            return self._page(ident, error="your account has read-only access, so it can only "
+                                           "create read tokens")
         _, token = identity.create_token(ident.user, name, scope)
         return self._page(ident, new_token=token)
 

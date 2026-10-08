@@ -49,6 +49,10 @@ def csrf_token():
     return identity.csrf_token()
 
 
+def can_write(user):
+    return identity.can_write(user)
+
+
 def storage_usage():
     """(free bytes, total bytes) of the disk that holds uploaded files."""
     try:

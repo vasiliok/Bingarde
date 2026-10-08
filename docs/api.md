@@ -40,6 +40,14 @@ so the token is shown once. A token has one of two scopes:
 | `read` | list and get builds and files, download them |
 | `write` | also create and update builds and upload files |
 
+Writing also needs a **writer** account: an admin, or a user listed in `WRITER_EMAILS` or
+`WRITER_DOMAINS` (`*` = every signed-in user). Other users can only read, and a `write` token
+they own works like a `read` token. This is checked on every request, so taking a user out of
+these settings applies to their existing tokens at once.
+
+A build can only be changed (`PATCH`, a repeated `POST` of the same build, file uploads) by
+the user who created it, or by an admin. Use one CI account per project, or ask an admin.
+
 Deleting builds and files also needs an admin: a user whose e-mail is in `ADMIN_EMAILS`.
 
 A signed-in browser session works too; its `POST`, `PATCH` and `DELETE` requests must then
@@ -68,7 +76,7 @@ Errors use the HTTP status and one body shape:
 |---|---|---|
 | 400 | `bad_json` | the body is not a JSON object |
 | 401 | `unauthorized` | no token, or an unknown or revoked one |
-| 403 | `forbidden` | read-only token, not an admin, or a missing CSRF token |
+| 403 | `forbidden` | read-only token or account, someone else's build, not an admin, or a missing CSRF token |
 | 404 | `not_found` | no such build, file or path |
 | 405 | `method_not_allowed` | e.g. `PUT` |
 | 411 | `length_required` | a body without `Content-Length` |

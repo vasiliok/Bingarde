@@ -172,3 +172,35 @@ def test_came_from_cannot_leave_the_site(wsgi_app, anon):
     resp = browser.post("/login/dev", {"email": "x@example.com", "_csrf_token": csrf_from(page),
                                        "came_from": "//evil.example/steal"}, status=302)
     assert resp.location in ("http://localhost/", "/")
+
+
+# ---- access is checked on every request ---------------------------------------
+
+def test_blocked_user_loses_session_and_tokens(wsgi_app, migrated_db, anon, monkeypatch):
+    from tg import config
+    token = make_token(migrated_db, "gone@example.com", "write")
+    browser, _ = login(wsgi_app, "gone@example.com")
+    monkeypatch.setitem(config, "blocked_emails", "Gone@example.com")
+    resp = client(wsgi_app, token).get("/api/v2/builds", status=401)
+    assert "may no longer use this site" in resp.json["error"]["message"]
+    browser.get("/api/v2/builds", status=401)
+    browser.get("/tokens", status=302)
+
+
+def test_narrowed_domains_apply_to_open_sessions_and_tokens(wsgi_app, migrated_db, anon, monkeypatch):
+    from tg import config
+    token = make_token(migrated_db, "pat@old.example.org", "read")
+    browser, _ = login(wsgi_app, "pat@old.example.org")
+    monkeypatch.setitem(config, "allowed_email_domains", "example.com")
+    client(wsgi_app, token).get("/api/v2/builds", status=401)
+    browser.get("/api/v2/builds", status=401)
+
+
+def test_blocked_user_cannot_sign_in(wsgi_app, anon, monkeypatch):
+    from tg import config
+    monkeypatch.setitem(config, "blocked_emails", "gone@example.com")
+    browser = client(wsgi_app)
+    page = browser.get("/login")
+    resp = browser.post("/login/dev", {"email": "gone@example.com", "_csrf_token": csrf_from(page)},
+                        status=302)
+    assert "/login?error=" in resp.location

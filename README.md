@@ -109,6 +109,7 @@ Set with environment variables (see `docker-compose.yml`):
 | `BASE_URL` | Public URL of the site |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
 | `ALLOWED_EMAIL_DOMAINS`, `ADMIN_EMAILS` | Who may sign in, who is admin |
+| `BLOCKED_EMAILS` | Users who lose access at once, sessions and tokens included |
 | `WRITER_EMAILS`, `WRITER_DOMAINS` | Who may create builds and write tokens (`*` = everyone); others only read |
 | `DEV_LOGIN` | `1` = e-mail-only login, for local demos only |
 | `STORE_DIR` | Where uploaded files are kept |
@@ -123,7 +124,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-237 pytest tests against PostgreSQL.
+262 pytest tests against PostgreSQL.
 
 ## Stack
 

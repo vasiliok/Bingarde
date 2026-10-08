@@ -66,6 +66,8 @@ def json_body():
         body = json.loads(request.body)
     except ValueError:
         raise ApiError(400, "bad_json", "the body is not valid JSON")
+    except RecursionError:
+        raise ApiError(400, "bad_json", "the body is nested too deeply")
     if not isinstance(body, dict):
         raise ApiError(400, "bad_json", "the body must be a JSON object")
     return body

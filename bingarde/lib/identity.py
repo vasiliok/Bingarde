@@ -10,6 +10,8 @@
   a session must carry the session's CSRF token (header ``X-CSRF-Token`` or
   form field ``_csrf_token``). Requests with a Bearer token are exempt.
 * Admins are the users whose e-mail is listed in ADMIN_EMAILS.
+* ALLOWED_EMAIL_DOMAINS and BLOCKED_EMAILS are checked on every request too,
+  so a user taken out of them loses their sessions and tokens at once.
 """
 import datetime
 import hashlib
@@ -74,10 +76,18 @@ def can_write(user):
             or "*" in domains or email.rsplit("@", 1)[-1] in domains)
 
 
+def allowed_email_domains():
+    return _csv_setting("allowed_email_domains")
+
+
 def email_allowed(email):
-    """True when ALLOWED_EMAIL_DOMAINS is empty or contains the e-mail's domain."""
-    domains = _csv_setting("allowed_email_domains")
-    return not domains or email.rsplit("@", 1)[-1].lower() in domains
+    """True when the e-mail is not in BLOCKED_EMAILS, and ALLOWED_EMAIL_DOMAINS is
+    empty or contains its domain."""
+    email = (email or "").lower()
+    if email in _csv_setting("blocked_emails"):
+        return False
+    domains = allowed_email_domains()
+    return not domains or email.rsplit("@", 1)[-1] in domains
 
 
 def dev_login_enabled():
@@ -90,12 +100,16 @@ def hash_token(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_token(user, name, scope):
-    """Create a token for ``user``. Returns (ApiToken row, the token text, shown once)."""
+def create_token(user, name, scope, days=None):
+    """Create a token for ``user`` that expires after ``days`` (None: never).
+    Returns (ApiToken row, the token text, shown once)."""
     if scope not in ("read", "write"):
         raise ValueError("scope must be 'read' or 'write'")
     token = TOKEN_PREFIX + secrets.token_urlsafe(32)
-    row = ApiToken(user=user, name=name, scope=scope,
+    expires_at = None
+    if days is not None:
+        expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
+    row = ApiToken(user=user, name=name, scope=scope, expires_at=expires_at,
                    token_prefix=token[:10], token_hash=hash_token(token))
     DBSession.add(row)
     DBSession.flush()
@@ -106,6 +120,10 @@ def _identity_from_token(token):
     row = DBSession.scalar(select(ApiToken).where(ApiToken.token_hash == hash_token(token)))
     if row is None or row.revoked_at is not None or not row.user.is_active:
         raise AuthError(401, "invalid or revoked API token")
+    if row.expired:
+        raise AuthError(401, "this API token has expired")
+    if not email_allowed(row.user.email):
+        raise AuthError(401, "%s may no longer use this site" % row.user.email)
     row.last_used_at = datetime.datetime.now(datetime.timezone.utc)
     scope = "write" if row.scope == "write" and can_write(row.user) else "read"
     return Identity(user=row.user, via="token", scope=scope, token=row)
@@ -126,7 +144,7 @@ def _identity_from_session():
     if not user_id:
         return None
     user = DBSession.get(User, user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or not email_allowed(user.email):
         return None
     return Identity(user=user, via="session", scope="write" if can_write(user) else "read")
 

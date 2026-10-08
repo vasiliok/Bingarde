@@ -44,5 +44,11 @@ class ApiToken(Base):
         DateTime(timezone=True), server_default=func.now())
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # NULL: never expires.
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="tokens")
+
+    @property
+    def expired(self):
+        return self.expires_at is not None and self.expires_at <= datetime.now(self.expires_at.tzinfo)

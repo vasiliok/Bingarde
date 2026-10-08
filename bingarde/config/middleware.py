@@ -26,6 +26,7 @@ ENV_OVERRIDES = {
     "SMTP_STARTTLS": "smtp_starttls",
     "ADMIN_EMAILS": "admin_emails",
     "ALLOWED_EMAIL_DOMAINS": "allowed_email_domains",
+    "BLOCKED_EMAILS": "blocked_emails",
     "WRITER_EMAILS": "writer_emails",
     "WRITER_DOMAINS": "writer_domains",
     "DEV_LOGIN": "dev_login",
@@ -45,6 +46,9 @@ def make_app(global_conf, **app_conf):
         raise RuntimeError("SESSION_SECRET is not set")
     # Signs the session cookie, so a client cannot forge a session id.
     app_conf.setdefault("session.validate_key", app_conf["session.secret"])
+    # Over https the session cookie is never sent in clear text.
+    if str(app_conf.get("base_url", "")).lower().startswith("https://"):
+        app_conf.setdefault("session.secure", "true")
     check_settings(app_conf)
 
     return base_config.make_wsgi_app(global_conf, app_conf)

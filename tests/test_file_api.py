@@ -148,3 +148,42 @@ def test_archive_name_is_sanitized(app):
     build = create_build(app, name='we"ird name')
     resp = app.get("/api/v2/builds/%d/archive" % build["id"])
     assert resp.headers["Content-Disposition"] == "attachment; filename=build_we_ird_name.zip"
+
+
+def test_archive_is_streamed_without_a_temp_file(app, monkeypatch):
+    import tempfile
+    build = create_build(app, name="streamed")
+    uploaded(app, build["id"], "big.bin", b"\0" * (3 * 1024 * 1024))
+    monkeypatch.setattr(tempfile, "TemporaryFile", None)    # any use would fail
+    resp = app.get("/api/v2/builds/%d/archive" % build["id"])
+    with zipfile.ZipFile(io.BytesIO(resp.body)) as archive:
+        assert archive.read("big.bin") == b"\0" * (3 * 1024 * 1024)
+
+
+def test_archive_with_a_file_missing_on_disk_is_500_before_streaming(app):
+    build = create_build(app)
+    f = uploaded(app, build["id"], "a.txt", b"a")
+    os.remove(stored(f["path"]))
+    assert api_error(app.get("/api/v2/builds/%d/archive" % build["id"], expect_errors=True),
+                     500)["code"] == "file_missing"
+
+
+def test_too_many_parallel_archives_are_refused(app, monkeypatch):
+    import threading
+    from bingarde.lib import storage
+    monkeypatch.setattr(storage, "ARCHIVE_SLOTS", threading.BoundedSemaphore(1))
+    build = create_build(app)
+    uploaded(app, build["id"], "a.txt", b"a")
+    storage.ARCHIVE_SLOTS.acquire()                          # one download in progress
+    assert api_error(app.get("/api/v2/builds/%d/archive" % build["id"], expect_errors=True),
+                     503)["code"] == "busy"
+    storage.ARCHIVE_SLOTS.release()
+    app.get("/api/v2/builds/%d/archive" % build["id"], status=200)
+    app.get("/api/v2/builds/%d/archive" % build["id"], status=200)   # slot given back
+
+
+def test_upload_takes_at_most_100_files(app):
+    build = create_build(app)
+    files = [("f%d" % i, "f%d.txt" % i, b"x") for i in range(101)]
+    resp = app.post("/api/v2/builds/%d/files" % build["id"], upload_files=files, expect_errors=True)
+    assert "at most 100 files" in api_error(resp, 422)["message"]

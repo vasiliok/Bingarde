@@ -23,7 +23,6 @@ import json
 from sqlalchemy import and_, func, select, true
 from tg import TGController, expose, request
 from webob import Response
-from webob.static import FileIter
 
 from bingarde.lib import filetypes, filters, identity, notify, storage
 from bingarde.lib.api import (ApiError, endpoint, error_response, invalid, json_body,
@@ -35,9 +34,16 @@ from bingarde.model.build import FILE_ROLES, BUILD_STATUSES
 IDENTITY_FIELDS = ("project", "branch", "platform", "build", "config", "arch")
 # Fields that a rerun or PATCH may change.
 UPDATABLE_FIELDS = ("status", "revision", "ci_url", "history", "name", "properties")
-# Text limits, as in the model.
+# Text limits, as in the model (history: a VCS changelog, 256 KiB).
 MAX_LENGTH = {"project": 100, "branch": 255, "platform": 50, "config": 50, "arch": 50,
-              "revision": 64, "ci_url": 1024, "name": 255}
+              "revision": 64, "ci_url": 1024, "name": 255, "history": 256 * 1024}
+# Limits for the free-form properties (after merging with the stored ones).
+MAX_PROPERTIES = 100
+MAX_PROPERTY_KEY = 100
+MAX_PROPERTIES_JSON = 64 * 1024
+MAX_PROPERTIES_DEPTH = 4
+# Files in one upload request.
+MAX_FILES_PER_REQUEST = 100
 # Exact-match list filters (ignoring case).
 LIST_FILTERS = ("project", "branch", "platform", "config", "arch", "status")
 MAX_LIMIT = 1000
@@ -50,6 +56,30 @@ def to_int(name, value):
         return int(value)
     except (TypeError, ValueError):
         raise invalid("%s must be an integer" % name)
+
+
+def _too_deep(value, levels):
+    """True when lists/objects in ``value`` nest more than ``levels`` deep.
+    Looks at most one level past the limit, so deep input cannot exhaust the stack."""
+    if isinstance(value, dict):
+        children = value.values()
+    elif isinstance(value, list):
+        children = value
+    else:
+        return False
+    return levels == 0 or any(_too_deep(child, levels - 1) for child in children)
+
+
+def check_properties(value):
+    if len(value) > MAX_PROPERTIES:
+        raise invalid("properties may have at most %d keys" % MAX_PROPERTIES)
+    if any(len(key) > MAX_PROPERTY_KEY for key in value):
+        raise invalid("property names may be at most %d characters" % MAX_PROPERTY_KEY)
+    if _too_deep(value, MAX_PROPERTIES_DEPTH):
+        raise invalid("properties may be nested at most %d levels" % MAX_PROPERTIES_DEPTH)
+    if len(json.dumps(value)) > MAX_PROPERTIES_JSON:
+        raise invalid("properties are larger than %d bytes as JSON" % MAX_PROPERTIES_JSON)
+    return value
 
 
 def check_field(name, value):
@@ -77,7 +107,7 @@ def apply_updates(build, body):
         if name in body:
             value = check_field(name, body[name])
             if name == "properties":
-                value = dict(build.properties or {}, **value)
+                value = check_properties(dict(build.properties or {}, **value))
             setattr(build, name, value)
 
 
@@ -210,11 +240,10 @@ class BuildController(TGController):
         methods("GET")
         identity.require()
         build = get_build(self.build_id)
-        archive, size = storage.zip_files(build.files)
         resp = Response(content_type="application/zip")
         resp.headers["Content-Disposition"] = "attachment; filename=%s" % storage.download_name(build.display_name)
-        resp.content_length = size
-        resp.app_iter = FileIter(archive)
+        # Streamed as it is built, so the size is not known up front.
+        resp.app_iter = storage.zip_stream(build.files)
         return resp
 
     @expose()
@@ -232,6 +261,8 @@ class BuildController(TGController):
                    if hasattr(value, "file") and getattr(value, "filename", None)]
         if not uploads:
             raise invalid("send one or more files as multipart/form-data")
+        if len(uploads) > MAX_FILES_PER_REQUEST:
+            raise invalid("send at most %d files per request" % MAX_FILES_PER_REQUEST)
         if role and role not in FILE_ROLES:
             raise invalid("role must be one of %s" % ", ".join(FILE_ROLES))
         result, created = [], False

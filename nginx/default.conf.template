@@ -11,6 +11,7 @@ limit_conn_zone $binary_remote_addr zone=perip:10m;
 server {
     listen 80;
     server_name _;
+    server_tokens off;
 
     # Only file uploads may be large (see the upload location). This matches
     # the app's max_request_body.
@@ -36,10 +37,13 @@ server {
     proxy_read_timeout 600s;
     proxy_send_timeout 600s;
 
+    # The app adds security headers to its own responses (lib/headers.py);
+    # these two locations are answered by nginx, so they get theirs here.
     location /static/ {
         alias /var/www/static/;
         access_log off;
         expires 1h;
+        add_header X-Content-Type-Options nosniff always;
     }
 
     # Uploaded files. Not reachable from outside ("internal"): the app checks
@@ -48,6 +52,11 @@ server {
     location /_store/ {
         internal;
         alias /var/www/store/;
+        # A download is never shown as a page: no sniffing, and a sandbox
+        # without scripts if a browser opens it anyway.
+        add_header X-Content-Type-Options nosniff always;
+        add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+        add_header X-Frame-Options DENY always;
     }
 
     # File uploads. Build artifacts can be large (0 would mean "no limit").

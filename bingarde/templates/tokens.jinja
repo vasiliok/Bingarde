@@ -21,11 +21,17 @@
         <div class="card-body">
             <form class="row g-3 align-items-end" method="post" action="/tokens/create">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <label for="id-token-name" class="form-label">Name</label>
                     <input type="text" class="form-control" id="id-token-name" name="name" maxlength="100" required placeholder="e.g. jenkins-ios">
                 </div>
-                <div class="col-md-5">
+                <div class="col-md-2">
+                    <label for="id-token-days" class="form-label">Valid for</label>
+                    <select class="form-select" id="id-token-days" name="days">
+                        {% for value, label in lifetimes %}<option value="{{ value }}"{% if value == default_lifetime %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="scope" id="id-scope-read" value="read" checked>
                         <label class="form-check-label" for="id-scope-read">read <span class="text-body-secondary">(list and download)</span></label>
@@ -47,7 +53,7 @@
             <table class="table table-hover align-middle mb-0" id="id-token-table">
                 <thead><tr>
                     <th>Name</th>{% if is_admin %}<th>Owner</th>{% endif %}<th>Token</th><th>Scope</th>
-                    <th>Created</th><th>Last used</th><th>Status</th><th></th>
+                    <th>Created</th><th>Expires</th><th>Last used</th><th>Status</th><th></th>
                 </tr></thead>
                 <tbody>
                 {% for t in tokens %}
@@ -56,8 +62,9 @@
                     <td><code>{{ t.token_prefix }}…</code></td>
                     <td>{{ t.scope }}{% if t.scope == "write" and not h.can_write(t.user) %} <span class="badge text-bg-warning" title="The owner has read-only access, so this token can only read">read only</span>{% endif %}</td>
                     <td>{{ h.format_date(t.created_at) }}</td>
+                    <td>{{ h.format_date(t.expires_at, "%Y-%m-%d") or "never" }}</td>
                     <td>{{ h.format_date(t.last_used_at) or "never" }}</td>
-                    <td>{% if t.revoked_at %}<span class="badge text-bg-secondary">revoked</span>{% else %}<span class="badge text-bg-success">active</span>{% endif %}</td>
+                    <td>{% if t.revoked_at %}<span class="badge text-bg-secondary">revoked</span>{% elif t.expired %}<span class="badge text-bg-secondary">expired</span>{% else %}<span class="badge text-bg-success">active</span>{% endif %}</td>
                     <td class="text-end">{% if not t.revoked_at %}
                         <form method="post" action="/tokens/revoke" class="mb-0">
                             <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
@@ -66,7 +73,7 @@
                         </form>{% endif %}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="8" class="text-center text-body-secondary py-4">No tokens yet.</td></tr>
+                <tr><td colspan="9" class="text-center text-body-secondary py-4">No tokens yet.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>

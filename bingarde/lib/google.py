@@ -7,6 +7,10 @@
    (Google's published keys), issuer, audience, expiry, nonce, verified e-mail
    and the ALLOWED_EMAIL_DOMAINS list. It returns the verified claims.
 
+   With ALLOWED_EMAIL_DOMAINS set, an account of such a domain must be a
+   Google Workspace account of that domain (``hd`` claim): a personal Google
+   account can be registered with any e-mail address, a company one included.
+
 Network calls are in ``exchange_code`` and ``fetch_jwks`` so tests can replace them.
 """
 import secrets
@@ -21,7 +25,7 @@ from joserfc.errors import JoseError
 from joserfc.jwk import KeySet
 from tg import config, session
 
-from bingarde.lib.identity import email_allowed
+from bingarde.lib.identity import allowed_email_domains, email_allowed
 
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -29,6 +33,8 @@ JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 ISSUERS = ["https://accounts.google.com", "accounts.google.com"]
 JWKS_TTL = 3600
 SESSION_KEY = "google_oauth"
+# Personal Google accounts have these domains and never an hd claim.
+CONSUMER_DOMAINS = {"gmail.com", "googlemail.com"}
 
 
 class GoogleLoginError(Exception):
@@ -134,4 +140,8 @@ def verify_id_token(id_token, nonce):
         raise GoogleLoginError("the Google account has no verified e-mail address")
     if not email_allowed(email):
         raise GoogleLoginError("%s is not allowed to sign in here" % email)
+    domain = email.rsplit("@", 1)[-1].lower()
+    if (allowed_email_domains() and domain not in CONSUMER_DOMAINS
+            and str(claims.get("hd") or "").lower() != domain):
+        raise GoogleLoginError("%s is not a Google Workspace account of %s" % (email, domain))
     return claims

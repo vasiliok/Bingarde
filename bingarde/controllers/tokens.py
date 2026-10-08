@@ -12,6 +12,10 @@ from tg import TGController, abort, expose, redirect
 from bingarde.lib import identity
 from bingarde.model import ApiToken, DBSession
 
+# Lifetimes offered when creating a token, in days ("" = never expires).
+LIFETIMES = [("30", "30 days"), ("90", "90 days"), ("365", "1 year"), ("", "never")]
+DEFAULT_LIFETIME = "365"
+
 
 class TokensController(TGController):
 
@@ -23,6 +27,7 @@ class TokensController(TGController):
                     can_write=identity.can_write(ident.user),
                     tokens=DBSession.scalars(query).all(),
                     new_token=new_token, error=error,
+                    lifetimes=LIFETIMES, default_lifetime=DEFAULT_LIFETIME,
                     csrf_token=identity.csrf_token(), current_page="tokens")
 
     @expose("jinja:bingarde.templates.tokens")
@@ -30,7 +35,7 @@ class TokensController(TGController):
         return self._page(identity.page_identity())
 
     @expose("jinja:bingarde.templates.tokens")
-    def create(self, name="", scope="read", **kw):
+    def create(self, name="", scope="read", days=DEFAULT_LIFETIME, **kw):
         ident = identity.page_identity()
         identity.require_page_post()
         name = name.strip()[:100]
@@ -39,7 +44,9 @@ class TokensController(TGController):
         if scope == "write" and not identity.can_write(ident.user):
             return self._page(ident, error="your account has read-only access, so it can only "
                                            "create read tokens")
-        _, token = identity.create_token(ident.user, name, scope)
+        if days not in dict(LIFETIMES):
+            return self._page(ident, error="pick how long the token is valid")
+        _, token = identity.create_token(ident.user, name, scope, int(days) if days else None)
         return self._page(ident, new_token=token)
 
     @expose()

@@ -69,3 +69,45 @@ def test_admin_sees_and_revokes_everyones_tokens(wsgi_app, migrated_db, db, anon
     browser.post("/tokens/revoke", {"token_id": str(other_id), "_csrf_token": csrf}, status=302)
     db.expire_all()
     assert db.get(ApiToken, other_id).revoked_at is not None
+
+
+# ---- expiry -------------------------------------------------------------------
+
+def test_token_expires_after_the_chosen_days(wsgi_app, db, anon):
+    browser, csrf = login(wsgi_app, "user@example.com")
+    browser.post("/tokens/create", {"name": "ci", "scope": "read", "days": "30", "_csrf_token": csrf})
+    row = db.query(ApiToken).one()
+    days = (row.expires_at - row.created_at).days
+    assert days in (29, 30)
+
+
+def test_token_can_be_created_without_expiry(wsgi_app, db, anon):
+    browser, csrf = login(wsgi_app, "user@example.com")
+    browser.post("/tokens/create", {"name": "ci", "scope": "read", "days": "", "_csrf_token": csrf})
+    assert db.query(ApiToken).one().expires_at is None
+
+
+def test_default_lifetime_is_one_year(wsgi_app, db, anon):
+    browser, csrf = login(wsgi_app, "user@example.com")
+    create(browser, csrf, scope="read")
+    row = db.query(ApiToken).one()
+    assert 364 <= (row.expires_at - row.created_at).days <= 365
+
+
+def test_unknown_lifetime_is_rejected(wsgi_app, db, anon):
+    browser, csrf = login(wsgi_app, "user@example.com")
+    resp = browser.post("/tokens/create", {"name": "ci", "scope": "read", "days": "99999",
+                                           "_csrf_token": csrf})
+    assert "how long" in resp.text
+    assert db.query(ApiToken).count() == 0
+
+
+def test_expired_token_is_refused_and_shown_as_expired(wsgi_app, db, anon):
+    from sqlalchemy import text
+    browser, csrf = login(wsgi_app, "user@example.com")
+    token = create(browser, csrf, scope="read")
+    db.execute(text("UPDATE api_tokens SET expires_at = now() - interval '1 minute'"))
+    db.commit()
+    resp = client(wsgi_app, token).get("/api/v2/builds", status=401)
+    assert "expired" in resp.json["error"]["message"]
+    assert ">expired</span>" in browser.get("/tokens").text

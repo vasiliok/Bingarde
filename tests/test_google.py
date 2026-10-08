@@ -141,3 +141,44 @@ def test_login_page_hides_google_when_not_configured(wsgi_app, anon, monkeypatch
     assert "Sign in with Google" not in page.text
     resp = client(wsgi_app).get("/login/google", status=302)
     assert "/login?error=" in resp.location
+
+
+# ---- one Google account per user ----------------------------------------------
+
+def google_login(wsgi_app, fake_google, **claims):
+    fake_google["answer"] = lambda nonce: {"id_token": id_token(nonce, **claims)}
+    browser = client(wsgi_app)
+    state = start(browser, fake_google)
+    return browser, browser.get("/login/google/callback", {"state": state, "code": "the-code"},
+                                status=302)
+
+
+def test_another_google_account_with_the_same_email_is_refused(wsgi_app, db, anon, fake_google):
+    google_login(wsgi_app, fake_google, sub="google-A")
+    browser, resp = google_login(wsgi_app, fake_google, sub="google-B")
+    assert "/login?error=" in resp.location and "another+Google+account" in resp.location
+    browser.get("/tokens", status=302)
+    assert [(u.email, u.google_sub) for u in db.query(User)] == [("pat@example.com", "google-A")]
+
+
+def test_workspace_account_of_an_allowed_domain_signs_in(wsgi_app, anon, fake_google, monkeypatch):
+    from tg import config
+    monkeypatch.setitem(config, "allowed_email_domains", "example.com")
+    _, resp = google_login(wsgi_app, fake_google, hd="example.com")
+    assert resp.location.endswith("/tokens")
+
+
+def test_personal_account_with_a_company_email_is_refused(wsgi_app, db, anon, fake_google,
+                                                         monkeypatch):
+    from tg import config
+    monkeypatch.setitem(config, "allowed_email_domains", "example.com")
+    location = failed_login(wsgi_app, fake_google)          # no hd claim
+    assert "Workspace" in location
+    assert db.query(User).count() == 0
+
+
+def test_gmail_accounts_need_no_hd_claim(wsgi_app, anon, fake_google, monkeypatch):
+    from tg import config
+    monkeypatch.setitem(config, "allowed_email_domains", "gmail.com")
+    _, resp = google_login(wsgi_app, fake_google, email="pat@gmail.com")
+    assert resp.location.endswith("/tokens")

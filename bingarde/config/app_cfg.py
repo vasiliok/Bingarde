@@ -9,6 +9,7 @@ import bingarde
 from bingarde import model
 from bingarde.controllers.root import RootController
 from bingarde.lib import app_globals, helpers
+from bingarde.lib.headers import SecurityHeadersWrapper
 from bingarde.lib.limits import BodyLimitWrapper
 
 base_config = FullStackApplicationConfigurator()
@@ -34,3 +35,5 @@ base_config.update_blueprint({
 # Default position: inside the session and transaction wrappers, before dispatch
 # reads the body.
 base_config.register_application_wrapper(BodyLimitWrapper)
+# Outermost, so error pages get the headers too.
+base_config.register_application_wrapper(SecurityHeadersWrapper, after=True)

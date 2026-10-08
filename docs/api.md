@@ -33,7 +33,9 @@ Authorization: Bearer bg_...
 ```
 
 Create tokens on the **API tokens** page of the web UI. Only a hash of the token is stored,
-so the token is shown once. A token has one of two scopes:
+so the token is shown once. A token is valid for 30 days, 90 days, 1 year (the default) or
+without end, as chosen when it is created; an expired token gets `401`. A token has one of
+two scopes:
 
 | Scope | Allows |
 |---|---|
@@ -43,7 +45,9 @@ so the token is shown once. A token has one of two scopes:
 Writing also needs a **writer** account: an admin, or a user listed in `WRITER_EMAILS` or
 `WRITER_DOMAINS` (`*` = every signed-in user). Other users can only read, and a `write` token
 they own works like a `read` token. This is checked on every request, so taking a user out of
-these settings applies to their existing tokens at once.
+these settings applies to their existing tokens at once. The same holds for
+`ALLOWED_EMAIL_DOMAINS` and `BLOCKED_EMAILS`: a user they no longer let in gets `401` with any
+token or session.
 
 A build can only be changed (`PATCH`, a repeated `POST` of the same build, file uploads) by
 the user who created it, or by an admin. Use one CI account per project, or ask an admin.
@@ -84,6 +88,7 @@ Errors use the HTTP status and one body shape:
 | 415 | `unsupported_media_type` | a body that is not `application/json` |
 | 422 | `invalid` | a missing, unknown or invalid field; the message names it |
 | 500 | `internal` | an unexpected server error |
+| 503 | `busy` | too many zip downloads at the moment |
 
 When a request fails, nothing it wrote is kept.
 
@@ -108,8 +113,8 @@ number. These six fields identify it; there can be only one build for each combi
 | `status` | | string | `uploading`, `complete` (default) or `failed` |
 | `ci_url` | | string | link to the CI job; must start with `http://` or `https://` |
 | `name` | | string | display name; default `<project>-<platform>-<build>` |
-| `properties` | | object | extra values, e.g. `{"compiler": "gcc 12.2"}` |
-| `history` | | string | free text, e.g. the changelog |
+| `properties` | | object | extra values, e.g. `{"compiler": "gcc 12.2"}`; at most 100 keys of up to 100 characters, nested at most 4 levels, 64 KiB as JSON (after merging) |
+| `history` | | string | free text, e.g. the changelog; at most 256 KiB |
 
 Other fields are refused. The answer is `201 Created` with the [build](#build).
 
@@ -192,7 +197,9 @@ curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -X PA
 ### Download a build as zip
 
 `GET /api/v2/builds/{id}/archive` — a zip of all files of the build (uncompressed, so large
-builds start quickly).
+builds start quickly). It is built while it is sent, so the answer has no `Content-Length`.
+Only a few archives are sent at the same time; when the server is busy the answer is `503`
+with code `busy`: try again a little later.
 
 ## Files
 
@@ -202,7 +209,7 @@ builds start quickly).
 
 | Field | Required | Meaning |
 |---|---|---|
-| any name | yes, one or more | the files; the field names do not matter |
+| any name | yes, 1 to 100 | the files; the field names do not matter |
 | `role` | | the role of all files in this request; default: detected from each name |
 
 The answer is `{"files": [...]}`, one [file](#file) per uploaded file, each with an extra key

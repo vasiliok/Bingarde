@@ -214,3 +214,35 @@ def test_rerun_sends_no_second_mail(app, db, monkeypatch):
     resp = app.post_json("/api/v2/builds", build_fields(project="MatchMe", build=9))
     assert resp.status_int == 200
     assert len(sent) == 1
+
+
+# ---- size limits ----------------------------------------------------------------
+
+def test_history_has_a_size_limit(app):
+    resp = app.post_json("/api/v2/builds", build_fields(history="x" * (256 * 1024 + 1)),
+                         expect_errors=True)
+    assert "history is longer than" in api_error(resp, 422)["message"]
+
+
+@pytest.mark.parametrize("properties, message", [
+    ({"k%d" % i: i for i in range(101)}, "at most 100 keys"),
+    ({"k" * 101: 1}, "at most 100 characters"),
+    ({"a": {"b": {"c": {"d": {"e": 1}}}}}, "nested at most 4 levels"),
+    ({"k%d" % i: "x" * 1000 for i in range(70)}, "larger than"),
+])
+def test_properties_have_limits(app, properties, message):
+    resp = app.post_json("/api/v2/builds", build_fields(properties=properties), expect_errors=True)
+    assert message in api_error(resp, 422)["message"]
+
+
+def test_property_limits_count_the_merged_properties(app):
+    build = create_build(app, properties={"k%d" % i: i for i in range(60)})
+    resp = app.patch_json("/api/v2/builds/%d" % build["id"],
+                          {"properties": {"n%d" % i: i for i in range(60)}}, expect_errors=True)
+    assert "at most 100 keys" in api_error(resp, 422)["message"]
+
+
+def test_deeply_nested_json_is_a_400_not_a_crash(app):
+    body = '{"properties": ' + "[" * 100000 + "]" * 100000 + "}"
+    resp = app.post("/api/v2/builds", body, content_type="application/json", expect_errors=True)
+    assert api_error(resp, 400)["code"] == "bad_json"

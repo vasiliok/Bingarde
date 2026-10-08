@@ -10,7 +10,7 @@ import hashlib
 import logging
 import os
 import re
-import tempfile
+import threading
 import zipfile
 
 import transaction
@@ -114,18 +114,88 @@ def _remove(full):
         folder = os.path.dirname(folder)
 
 
-def zip_files(build_files):
-    """Pack the files into an uncompressed zip. Returns (open temp file, size)."""
-    temp = tempfile.TemporaryFile()
-    with zipfile.ZipFile(temp, "w", zipfile.ZIP_STORED, allowZip64=True) as archive:
-        for build_file in build_files:
-            full = absolute_path(build_file.path)
-            if not os.path.isfile(full):
-                raise ApiError(500, "file_missing", "file missing on disk: %s" % build_file.path)
-            archive.write(full, os.path.basename(full))
-    size = temp.tell()
-    temp.seek(0)
-    return temp, size
+# Zip downloads streaming at the same time, per app process. Each one holds
+# a gunicorn thread while it reads every file of a build, so at most half of
+# the default 4 threads may do that; the rest stay free for pages and the API.
+ARCHIVE_SLOTS = threading.BoundedSemaphore(2)
+
+
+class _Pipe:
+    """A write-only file for ZipFile that hands the written bytes to a generator.
+    It has tell() but no seek(), so ZipFile streams (with data descriptors)."""
+
+    def __init__(self):
+        self.chunks = []
+        self.position = 0
+
+    def write(self, data):
+        self.chunks.append(bytes(data))
+        self.position += len(data)
+        return len(data)
+
+    def tell(self):
+        return self.position
+
+    def flush(self):
+        pass
+
+    def take(self):
+        chunks, self.chunks = self.chunks, []
+        return chunks
+
+
+def zip_stream(build_files):
+    """An uncompressed zip of the files, as an iterator of byte chunks.
+
+    Built while it is sent: nothing is written to disk, whatever the build's
+    size. Checks that every file exists before the first byte goes out, and
+    raises ApiError(503) when too many archives are being sent already."""
+    files = []
+    for build_file in build_files:
+        full = absolute_path(build_file.path)
+        if not os.path.isfile(full):
+            raise ApiError(500, "file_missing", "file missing on disk: %s" % build_file.path)
+        files.append(full)
+    if not ARCHIVE_SLOTS.acquire(blocking=False):
+        raise ApiError(503, "busy", "too many zip downloads at the moment; try again later")
+    return _SlotIter(_zip_chunks(files))
+
+
+class _SlotIter:
+    """Iterates ``chunks`` and gives the archive slot back on close(), which
+    the WSGI server always calls, also when sending stopped early."""
+
+    def __init__(self, chunks):
+        self._chunks = chunks
+        self._open = True
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._chunks)
+
+    def close(self):
+        self._chunks.close()
+        if self._open:
+            self._open = False
+            ARCHIVE_SLOTS.release()
+
+
+def _zip_chunks(files):
+    pipe = _Pipe()
+    with zipfile.ZipFile(pipe, "w", zipfile.ZIP_STORED, allowZip64=True) as archive:
+        for full in files:
+            info = zipfile.ZipInfo.from_file(full, os.path.basename(full))
+            with open(full, "rb") as src, archive.open(info, "w") as dst:
+                while True:
+                    chunk = src.read(COPY_CHUNK)
+                    if not chunk:
+                        break
+                    dst.write(chunk)
+                    yield from pipe.take()
+            yield from pipe.take()
+    yield from pipe.take()
 
 
 def download_name(build_name):

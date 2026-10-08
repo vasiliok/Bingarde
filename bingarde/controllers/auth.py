@@ -20,12 +20,18 @@ def safe_came_from(value):
 
 
 def find_or_create_user(email, name="", google_sub=None):
-    """Match by Google id first, then by e-mail (links a DEV_LOGIN user to Google)."""
+    """Match by Google id first, then by e-mail (links a DEV_LOGIN user to Google).
+
+    A user already linked to a Google account is never handed to a different
+    one with the same e-mail: raises GoogleLoginError."""
     user = None
     if google_sub:
         user = DBSession.scalar(select(User).where(User.google_sub == google_sub))
     if user is None:
         user = DBSession.scalar(select(User).where(func.lower(User.email) == email.lower()))
+        if user is not None and google_sub and user.google_sub not in (None, google_sub):
+            raise google_login.GoogleLoginError(
+                "%s is already linked to another Google account" % email)
     if user is None:
         user = User(email=email.lower(), name=name or email, is_active=True)
         DBSession.add(user)
@@ -52,10 +58,10 @@ class GoogleController(TGController):
     def callback(self, **params):
         try:
             claims, came_from = google_login.finish_login(params)
+            user = find_or_create_user(claims["email"], claims.get("name", ""), claims["sub"])
         except google_login.GoogleLoginError as exc:
             log.warning("Google login failed: %s", exc)
             redirect("/login", params={"error": str(exc)})
-        user = find_or_create_user(claims["email"], claims.get("name", ""), claims["sub"])
         if not user.is_active:
             redirect("/login", params={"error": "this account is disabled"})
         identity.login(user)

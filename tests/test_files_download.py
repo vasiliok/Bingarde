@@ -1,5 +1,5 @@
 """/files/<id>: single-file download for signed-in users and API tokens."""
-from tests.conftest import client, create_build, login, make_token, uploaded
+from tests.conftest import client, create_build, login, make_token, store_path, uploaded
 
 
 def test_signed_in_user_downloads_a_file(wsgi_app, app):
@@ -47,5 +47,5 @@ def test_xaccel_hands_the_file_to_nginx(wsgi_app, app, monkeypatch):
     stored = uploaded(app, build["id"], "big.iso", b"data")
     browser, _ = login(wsgi_app, "user@example.com")
     resp = browser.get("/files/%d" % stored["id"])
-    assert resp.headers["X-Accel-Redirect"] == "/_store/" + stored["path"]
+    assert resp.headers["X-Accel-Redirect"] == "/_store/" + store_path(stored)
     assert resp.body == b""

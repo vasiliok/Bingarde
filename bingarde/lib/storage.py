@@ -21,6 +21,9 @@ from bingarde.lib.api import ApiError, invalid
 log = logging.getLogger(__name__)
 
 COPY_CHUNK = 1024 * 1024
+# Longest file name kept, in UTF-8 bytes (file systems allow 255; the store
+# may add a "_<n>" suffix).
+MAX_NAME_BYTES = 200
 
 
 def store_dir():
@@ -37,10 +40,17 @@ def absolute_path(rel_path):
 
 
 def safe_name(filename):
-    """Keep only the last path component of a client-supplied file name."""
+    """Keep only the last path component of a client-supplied file name.
+
+    Refuses names with control characters (they end up in headers and on
+    disk) and names longer than MAX_NAME_BYTES."""
     name = os.path.basename((filename or "").replace("\\", "/")).strip()
     if name in ("", ".", ".."):
-        raise invalid("invalid file name: %s" % filename)
+        raise invalid("invalid file name: %r" % filename)
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in name):
+        raise invalid("the file name contains control characters: %r" % filename)
+    if len(name.encode("utf-8")) > MAX_NAME_BYTES:
+        raise invalid("the file name is longer than %d bytes" % MAX_NAME_BYTES)
     return name
 
 

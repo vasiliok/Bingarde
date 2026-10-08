@@ -9,8 +9,8 @@ from sqlalchemy import select, text
 from bingarde.lib.filetypes import detect_role
 from bingarde.lib.filters import clause
 from bingarde.model import Build, BuildFile
-from tests.conftest import (HERE, STORE_DIR, api_error, client, create_build, login,
-                            make_token, ok, build_fields, upload, uploaded)
+from tests.conftest import (HERE, STORE_DIR, api_error, client, create_build, login, make_token,
+                            ok, build_fields, store_path, upload, uploaded)
 
 
 def full_fields(**overrides):
@@ -147,7 +147,7 @@ def test_same_name_new_content_is_stored_again(app, db):
     uploaded(app, build["id"], "app.ipa", b"v1")
     second = uploaded(app, build["id"], "app.ipa", b"v2")
     assert second["existing"] is False
-    assert second["name"] == "app.ipa" and second["path"].endswith("app_1.ipa")
+    assert second["name"] == "app.ipa" and store_path(second).endswith("app_1.ipa")
     assert db.query(BuildFile).count() == 2
 
 

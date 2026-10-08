@@ -13,7 +13,7 @@ from webob import Response
 from webob.static import FileApp
 
 from bingarde.lib import identity, storage
-from bingarde.model import DBSession, BuildFile
+from bingarde.model import BuildFile, get_row
 
 
 def xaccel_enabled():
@@ -35,10 +35,7 @@ class FilesController(TGController):
             abort(401, str(exc))
         if caller is None:
             redirect("/login", params={"came_from": request.path_qs})
-        try:
-            build_file = DBSession.get(BuildFile, int(file_id))
-        except (TypeError, ValueError):
-            build_file = None
+        build_file = get_row(BuildFile, file_id)
         if build_file is None:
             abort(404, "File not found")
 

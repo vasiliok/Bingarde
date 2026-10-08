@@ -90,7 +90,7 @@ def failed_login(wsgi_app, fake_google, params=None, answer=None):
 
 
 def test_wrong_state_is_rejected(wsgi_app, anon, fake_google):
-    assert "state" in failed_login(wsgi_app, fake_google, params={"state": "forged"})
+    assert failed_login(wsgi_app, fake_google, params={"state": "forged"}).endswith("error=google")
 
 
 def test_wrong_nonce_is_rejected(wsgi_app, anon, fake_google):
@@ -115,7 +115,7 @@ def test_token_signed_by_another_key_is_rejected(wsgi_app, anon, fake_google):
 def test_unverified_email_is_rejected(wsgi_app, anon, fake_google):
     location = failed_login(wsgi_app, fake_google,
                             answer=lambda nonce: {"id_token": id_token(nonce, email_verified=False)})
-    assert "verified" in location
+    assert location.endswith("error=unverified")
 
 
 def test_domain_outside_allowed_list_is_rejected(wsgi_app, db, anon, fake_google, monkeypatch):
@@ -131,7 +131,7 @@ def test_callback_without_started_login_is_rejected(wsgi_app, anon):
 
 
 def test_google_error_parameter_is_reported(wsgi_app, anon, fake_google):
-    assert "access_denied" in failed_login(wsgi_app, fake_google, params={"error": "access_denied"})
+    assert failed_login(wsgi_app, fake_google, params={"error": "access_denied"}).endswith("error=cancelled")
 
 
 def test_login_page_hides_google_when_not_configured(wsgi_app, anon, monkeypatch):
@@ -156,7 +156,7 @@ def google_login(wsgi_app, fake_google, **claims):
 def test_another_google_account_with_the_same_email_is_refused(wsgi_app, db, anon, fake_google):
     google_login(wsgi_app, fake_google, sub="google-A")
     browser, resp = google_login(wsgi_app, fake_google, sub="google-B")
-    assert "/login?error=" in resp.location and "another+Google+account" in resp.location
+    assert resp.location.endswith("/login?error=linked")
     browser.get("/tokens", status=302)
     assert [(u.email, u.google_sub) for u in db.query(User)] == [("pat@example.com", "google-A")]
 
@@ -173,7 +173,7 @@ def test_personal_account_with_a_company_email_is_refused(wsgi_app, db, anon, fa
     from tg import config
     monkeypatch.setitem(config, "allowed_email_domains", "example.com")
     location = failed_login(wsgi_app, fake_google)          # no hd claim
-    assert "Workspace" in location
+    assert location.endswith("error=workspace")
     assert db.query(User).count() == 0
 
 
@@ -182,3 +182,28 @@ def test_gmail_accounts_need_no_hd_claim(wsgi_app, anon, fake_google, monkeypatc
     monkeypatch.setitem(config, "allowed_email_domains", "gmail.com")
     _, resp = google_login(wsgi_app, fake_google, email="pat@gmail.com")
     assert resp.location.endswith("/tokens")
+
+
+# ---- sign-in state in a signed cookie, not a session --------------------------
+
+def test_starting_google_login_creates_no_session(wsgi_app, anon, fake_google):
+    browser = client(wsgi_app)
+    start(browser, fake_google)
+    assert "bg_google_login" in browser.cookies
+    assert "beaker.session.id" not in browser.cookies
+
+
+def test_changed_google_login_cookie_is_refused(wsgi_app, anon, fake_google):
+    browser = client(wsgi_app)
+    state = start(browser, fake_google)
+    payload, _, signature = browser.cookies["bg_google_login"].rpartition(".")
+    browser.set_cookie("bg_google_login", payload + "." + "0" * len(signature))
+    resp = browser.get("/login/google/callback", {"state": state, "code": "the-code"}, status=302)
+    assert resp.location.endswith("/login?error=expired")
+
+
+def test_google_login_cookie_works_only_once(wsgi_app, anon, fake_google):
+    browser = client(wsgi_app)
+    state = start(browser, fake_google)
+    browser.get("/login/google/callback", {"state": state, "code": "the-code"}, status=302)
+    assert "bg_google_login" not in browser.cookies

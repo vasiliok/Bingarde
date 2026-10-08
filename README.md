@@ -115,6 +115,7 @@ Set with environment variables (see `docker-compose.yml`):
 | `STORE_DIR` | Where uploaded files are kept |
 | `BINGARDE_PORT`, `BINGARDE_MAX_UPLOAD` | Host port (8080) and upload limit (20g) |
 | `BINGARDE_BIND` | Host address nginx listens on (`127.0.0.1`; `0.0.0.0` = the network) |
+| `POSTGRES_PASSWORD` | Database password (demo default `bingarde`; set before the first start) |
 | `MAX_REQUEST_BODY` | Largest other request body in bytes (2 MiB) |
 | `SMTP_*` | Optional e-mail on new builds |
 
@@ -124,7 +125,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-262 pytest tests against PostgreSQL.
+278 pytest tests against PostgreSQL.
 
 ## Stack
 

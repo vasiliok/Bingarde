@@ -1,4 +1,6 @@
 """Who may call what: API tokens, browser sessions, CSRF, admin rights, DEV_LOGIN."""
+import pytest
+
 from bingarde.model import ApiToken, Build, User
 from tests.conftest import (ADMIN_EMAIL, client, create_build, csrf_from, login,
                             make_token, ok, build_fields, upload, uploaded)
@@ -135,12 +137,12 @@ def test_logout_needs_csrf(wsgi_app, anon):
 def test_dev_login_creates_the_user_and_rotates_the_session(wsgi_app, db, anon):
     browser = client(wsgi_app)
     page = browser.get("/login")
-    before = browser.cookies.get("beaker.session.id")
+    assert "beaker.session.id" not in browser.cookies       # no session before sign-in
     resp = browser.post("/login/dev", {"email": "New@Example.com", "name": "New",
                                        "_csrf_token": csrf_from(page), "came_from": "/tokens"},
                         status=302)
     assert resp.location.endswith("/tokens")
-    assert browser.cookies.get("beaker.session.id") != before
+    assert browser.cookies.get("beaker.session.id")
     assert db.query(User).filter_by(email="new@example.com").one().last_login_at is not None
 
 
@@ -157,7 +159,7 @@ def test_dev_login_rejects_other_domains(wsgi_app, anon, monkeypatch):
     page = browser.get("/login")
     resp = browser.post("/login/dev", {"email": "x@other.org", "_csrf_token": csrf_from(page)},
                         status=302)
-    assert "not+allowed" in resp.location or "not%20allowed" in resp.location
+    assert resp.location.endswith("/login?error=not_allowed")
 
 
 def test_dev_login_is_404_when_disabled(wsgi_app, anon, monkeypatch):
@@ -204,3 +206,73 @@ def test_blocked_user_cannot_sign_in(wsgi_app, anon, monkeypatch):
     resp = browser.post("/login/dev", {"email": "gone@example.com", "_csrf_token": csrf_from(page)},
                         status=302)
     assert "/login?error=" in resp.location
+
+
+# ---- sign-in without a server-side session --------------------------------------
+
+def test_anonymous_pages_create_no_session(wsgi_app, anon):
+    browser = client(wsgi_app)
+    for path in ("/login", "/login?error=disabled", "/builds/1", "/health"):
+        browser.get(path, expect_errors=True)
+    assert "beaker.session.id" not in browser.cookies
+    assert "bg_login_csrf" in browser.cookies
+
+
+def test_dev_login_refuses_a_csrf_token_without_its_cookie(wsgi_app, anon):
+    page = client(wsgi_app).get("/login")
+    other = client(wsgi_app)                                 # a different browser
+    other.post("/login/dev", {"email": "x@example.com", "_csrf_token": csrf_from(page)}, status=403)
+
+
+def test_dev_login_refuses_a_forged_csrf_cookie(wsgi_app, anon):
+    browser = client(wsgi_app)
+    browser.set_cookie("bg_login_csrf", "eyJ2IjoiYWJjIiwiZXhwIjo5OTk5OTk5OTk5fQ.0000")
+    browser.post("/login/dev", {"email": "x@example.com", "_csrf_token": "abc"}, status=403)
+
+
+def test_login_page_shows_only_known_error_messages(wsgi_app, anon):
+    page = client(wsgi_app).get("/login", {"error": "Your account is locked. Call +1 555 0100"})
+    assert "Call +1 555" not in page.text
+    assert "Sign-in failed. Please try again." in page.text
+    assert "This account is disabled." in client(wsgi_app).get("/login?error=disabled").text
+
+
+def test_came_from_with_control_characters_goes_home(wsgi_app, anon):
+    for came_from in ("/\t/evil.example", "/\n/evil.example", "/ok\x7f"):
+        browser = client(wsgi_app)
+        page = browser.get("/login")
+        resp = browser.post("/login/dev", {"email": "x@example.com", "_csrf_token": csrf_from(page),
+                                           "came_from": came_from}, status=302)
+        assert resp.location in ("http://localhost/", "/")
+
+
+# ---- numbers out of the database's range ------------------------------------------
+
+@pytest.mark.parametrize("n", [2 ** 31, 2 ** 63, 10 ** 30])
+def test_huge_numbers_are_never_a_server_error(wsgi_app, app, n):
+    import json
+    create_build(app)
+    browser, csrf = login(wsgi_app, ADMIN_EMAIL)
+    responses = [
+        app.post_json("/api/v2/builds", build_fields(build=n), expect_errors=True),
+        app.get("/api/v2/builds?build=%d" % n, expect_errors=True),
+        app.get("/api/v2/builds?offset=%d" % n, expect_errors=True),
+        app.get("/api/v2/builds/%d" % n, expect_errors=True),
+        app.get("/api/v2/files/%d" % n, expect_errors=True),
+        app.get("/files/%d" % n, expect_errors=True),
+        app.get("/api/v2/builds", {"filter": json.dumps({"field": "build", "op": "eq", "value": n})},
+                expect_errors=True),
+        app.get("/api/v2/builds", {"filter": json.dumps({"field": "created", "op": "since",
+                                                         "value": n})}, expect_errors=True),
+        browser.get("/builds/%d" % n, expect_errors=True),
+        browser.post("/tokens/revoke", {"token_id": str(n), "_csrf_token": csrf}, expect_errors=True),
+        browser.post("/builds/delete", {str(n): "1", "_csrf_token": csrf}, expect_errors=True),
+    ]
+    assert [r.status_int for r in responses if r.status_int >= 500] == []
+
+
+def test_revision_prefix_has_no_wildcards(app):
+    create_build(app, revision="abc123")
+    assert ok(app.get("/api/v2/builds?revision=abc"))["total"] == 1
+    assert ok(app.get("/api/v2/builds?revision=%25"))["total"] == 0
+    assert ok(app.get("/api/v2/builds?revision=a_c"))["total"] == 0

@@ -25,7 +25,8 @@ def test_build_file_as_dict(db):
     db.commit()
     d = f.as_dict()
     assert (d["id"], d["build_id"]) == (f.id, build.id)
-    assert (d["name"], d["path"]) == ("hello.txt", "2026/10/p1/hello.txt")
+    assert d["name"] == "hello.txt"
+    assert "path" not in d          # where it is stored stays inside the server
     assert d["size"] == 5
     assert "T" in d["uploaded_at"]
     assert d["download_url"] == "/files/%d" % f.id
@@ -52,3 +53,17 @@ def test_filter_preset_as_dict_without_user(db):
     db.commit()
     assert preset.as_dict()["user"] is None
     assert preset.as_dict()["notify"] is False
+
+
+def test_session_cleanup_removes_only_old_files(tmp_path):
+    import os
+    import time
+    from bingarde.lib.session_cleanup import remove_expired
+    old, fresh = tmp_path / "a" / "old.cache", tmp_path / "b" / "fresh.cache"
+    for path in (old, fresh):
+        path.parent.mkdir()
+        path.write_text("x")
+    now = time.time()
+    os.utime(old, (now - 7200, now - 7200))
+    assert remove_expired(str(tmp_path), 3600, now=now) == 1
+    assert not old.exists() and fresh.exists()

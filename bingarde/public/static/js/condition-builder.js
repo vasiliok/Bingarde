@@ -252,7 +252,7 @@
         },
 
         _valueWidget: function($box, widget, field, value) {
-            var pair = $.isArray(value) ? value : [value, null];
+            var pair = Array.isArray(value) ? value : [value, null];
             var number = function(placeholder, v) {
                 return $('<input type="number" class="form-control">').attr('placeholder', placeholder).val(v == null ? '' : v);
             };
@@ -334,7 +334,7 @@
         _rowValue: function($row) {
             var inputs = $row.find('.cb-value input, .cb-value select');
             var vals = inputs.map(function() {
-                var v = $.trim($(this).val() || '');
+                var v = String($(this).val() || '').trim();
                 return this.type === 'number' && v !== '' ? Number(v) : v;
             }).get();
             if (!vals.length || vals.some(function(v) { return v === ''; })) { return {ok: false}; }

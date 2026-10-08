@@ -124,7 +124,6 @@ class BuildFile(Base):
             "id": self.id,
             "build_id": self.build_id,
             "name": self.display_name,
-            "path": self.path,
             "role": self.role,
             "size": self.size,
             "sha256": self.sha256,
@@ -147,6 +146,9 @@ class FilterPreset(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     # E-mail the owner when a new build matches this preset.
     notify: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Mails sent since mail_window_start, for the hourly limit (lib/notify.py).
+    mail_window_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    mail_count: Mapped[int] = mapped_column(Integer, default=0)
 
     user: Mapped[Optional[User]] = relationship()
 

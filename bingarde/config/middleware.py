@@ -3,6 +3,7 @@ import logging
 import os
 
 from bingarde.config.app_cfg import base_config
+from bingarde.lib import session_cleanup
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ def make_app(global_conf, **app_conf):
     if str(app_conf.get("base_url", "")).lower().startswith("https://"):
         app_conf.setdefault("session.secure", "true")
     check_settings(app_conf)
+    session_cleanup.start(app_conf)
 
     return base_config.make_wsgi_app(global_conf, app_conf)
 

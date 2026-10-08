@@ -3,7 +3,11 @@
 Recipients are worked out inside the request; the mails are sent only after
 the database commit succeeds. A mail failure is logged and never breaks the
 upload. Without SMTP_HOST configured, nothing is sent.
+
+Each preset sends at most MAX_MAILS_PER_HOUR mails per hour, so a burst of new
+builds cannot flood its owner's inbox.
 """
+import datetime
 import logging
 import smtplib
 from email.message import EmailMessage
@@ -17,6 +21,8 @@ from bingarde.lib import filters
 from bingarde.model import DBSession, FilterPreset, Build
 
 log = logging.getLogger(__name__)
+
+MAX_MAILS_PER_HOUR = 20
 
 MESSAGE = """\
 A new build was added to Bingarde: {url}
@@ -47,9 +53,21 @@ def matching_recipients(build):
         except Exception:
             log.exception("preset %s has an unusable filter", preset.id)
             continue
-        if matches:
+        if matches and take_mail_slot(preset):
             found.append((preset.user.email, preset.name))
     return found
+
+
+def take_mail_slot(preset, now=None):
+    """Count one mail for ``preset``. False when its hourly limit is reached."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    if preset.mail_window_start is None or now - preset.mail_window_start >= datetime.timedelta(hours=1):
+        preset.mail_window_start, preset.mail_count = now, 0
+    if (preset.mail_count or 0) >= MAX_MAILS_PER_HOUR:
+        log.warning("preset %s reached %d mails this hour; not mailing", preset.id, MAX_MAILS_PER_HOUR)
+        return False
+    preset.mail_count = (preset.mail_count or 0) + 1
+    return True
 
 
 def build_messages(build, recipients):

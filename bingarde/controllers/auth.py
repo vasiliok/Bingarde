@@ -1,29 +1,80 @@
-"""Login pages: /login, /login/google, /login/google/callback, /login/dev, /logout."""
+"""Login pages: /login, /login/google, /login/google/callback, /login/dev, /logout.
+
+Nothing here creates a server-side session before someone is signed in: the
+login form's CSRF token and Google's sign-in state are kept in short signed
+cookies (lib/cookies.py). Errors are passed to /login as a code, and the page
+shows a fixed message for it, so a link cannot put its own text on the page.
+"""
 import logging
+import secrets
 
 from sqlalchemy import func, select
-from tg import TGController, abort, expose, redirect, request
+from tg import TGController, abort, expose, request, response, url
 
+from bingarde.lib import cookies, identity
 from bingarde.lib import google as google_login
-from bingarde.lib import identity
 from bingarde.model import DBSession, User
 
 log = logging.getLogger(__name__)
 
+LOGIN_CSRF_COOKIE = "bg_login_csrf"
+LOGIN_CSRF_AGE = 3600
+# /login?error=<code> shows these; any other code shows UNKNOWN_ERROR.
+LOGIN_ERRORS = {
+    "bad_email": "Enter an e-mail address.",
+    "not_allowed": "This account is not allowed to sign in here.",
+    "disabled": "This account is disabled.",
+    "not_configured": "Google sign-in is not configured.",
+    "expired": "The sign-in took too long. Please try again.",
+    "cancelled": "Google sign-in was cancelled.",
+    "unverified": "The Google account has no verified e-mail address.",
+    "workspace": "Sign in with your organization's Google Workspace account.",
+    "linked": "This e-mail address is already linked to another Google account.",
+    "google": "Google sign-in failed. Please try again.",
+}
+UNKNOWN_ERROR = "Sign-in failed. Please try again."
+
 
 def safe_came_from(value):
-    """Only local paths, so the login cannot redirect to another site."""
+    """Only local paths, so the login cannot redirect to another site.
+    Control characters are refused too: browsers drop some of them, so a
+    path like "/<tab>/evil.example" could turn into "//evil.example"."""
     if isinstance(value, str) and value.startswith("/") and not value.startswith("//") \
-            and "\\" not in value:
+            and "\\" not in value and not any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         return value
     return "/"
+
+
+def go(location, **params):
+    """Redirect, keeping the cookies set on this response (tg.redirect drops them)."""
+    response.status_int = 302
+    response.location = url(location, params=params)
+    return ""
+
+
+def failed(code):
+    return go("/login", error=code)
+
+
+def login_csrf_token():
+    """The login form's CSRF token, kept in a signed cookie (no session yet)."""
+    token = cookies.get_signed(LOGIN_CSRF_COOKIE)
+    if not isinstance(token, str):
+        token = secrets.token_urlsafe(32)
+    cookies.set_signed(LOGIN_CSRF_COOKIE, token, LOGIN_CSRF_AGE)
+    return token
+
+
+def login_csrf_ok(sent):
+    expected = cookies.get_signed(LOGIN_CSRF_COOKIE)
+    return isinstance(expected, str) and isinstance(sent, str) and secrets.compare_digest(expected, sent)
 
 
 def find_or_create_user(email, name="", google_sub=None):
     """Match by Google id first, then by e-mail (links a DEV_LOGIN user to Google).
 
     A user already linked to a Google account is never handed to a different
-    one with the same e-mail: raises GoogleLoginError."""
+    one with the same e-mail: raises GoogleLoginError("linked")."""
     user = None
     if google_sub:
         user = DBSession.scalar(select(User).where(User.google_sub == google_sub))
@@ -31,7 +82,7 @@ def find_or_create_user(email, name="", google_sub=None):
         user = DBSession.scalar(select(User).where(func.lower(User.email) == email.lower()))
         if user is not None and google_sub and user.google_sub not in (None, google_sub):
             raise google_login.GoogleLoginError(
-                "%s is already linked to another Google account" % email)
+                "linked", "%s is already linked to another Google account" % email)
     if user is None:
         user = User(email=email.lower(), name=name or email, is_active=True)
         DBSession.add(user)
@@ -49,10 +100,10 @@ class GoogleController(TGController):
     @expose()
     def index(self, came_from="/", **kw):
         try:
-            url = google_login.start_login(safe_came_from(came_from))
+            return go(google_login.start_login(safe_came_from(came_from)))
         except google_login.GoogleLoginError as exc:
-            redirect("/login", params={"error": str(exc)})
-        redirect(url)
+            log.warning("Google login failed: %s", exc)
+            return failed(exc.code)
 
     @expose()
     def callback(self, **params):
@@ -61,11 +112,11 @@ class GoogleController(TGController):
             user = find_or_create_user(claims["email"], claims.get("name", ""), claims["sub"])
         except google_login.GoogleLoginError as exc:
             log.warning("Google login failed: %s", exc)
-            redirect("/login", params={"error": str(exc)})
+            return failed(exc.code)
         if not user.is_active:
-            redirect("/login", params={"error": "this account is disabled"})
+            return failed("disabled")
         identity.login(user)
-        redirect(safe_came_from(came_from))
+        return go(safe_came_from(came_from))
 
 
 class LoginController(TGController):
@@ -73,10 +124,11 @@ class LoginController(TGController):
 
     @expose("jinja:bingarde.templates.login")
     def index(self, came_from="/", error=None, **kw):
-        return dict(came_from=safe_came_from(came_from), error=error,
+        return dict(came_from=safe_came_from(came_from),
+                    error=LOGIN_ERRORS.get(error, UNKNOWN_ERROR) if error else None,
                     google_enabled=google_login.configured(),
                     dev_login=identity.dev_login_enabled(),
-                    csrf_token=identity.csrf_token(), hide_nav=True)
+                    csrf_token=login_csrf_token(), hide_nav=True)
 
     @expose()
     def dev(self, email="", name="", came_from="/", **kw):
@@ -84,18 +136,17 @@ class LoginController(TGController):
         if not identity.dev_login_enabled():
             abort(404)
         if request.method != "POST":
-            redirect("/login")
-        try:
-            identity.check_csrf()
-        except identity.AuthError:
+            return go("/login")
+        if not login_csrf_ok(kw.get(identity.CSRF_FIELD)):
             abort(403, "missing or invalid CSRF token")
         email = email.strip()
         if "@" not in email:
-            redirect("/login", params={"error": "enter an e-mail address"})
+            return failed("bad_email")
         if not identity.email_allowed(email):
-            redirect("/login", params={"error": "%s is not allowed to sign in here" % email})
+            return failed("not_allowed")
         user = find_or_create_user(email, name.strip())
         if not user.is_active:
-            redirect("/login", params={"error": "this account is disabled"})
+            return failed("disabled")
+        cookies.delete(LOGIN_CSRF_COOKIE)
         identity.login(user)
-        redirect(safe_came_from(came_from))
+        return go(safe_came_from(came_from))

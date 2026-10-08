@@ -5,7 +5,7 @@ import re
 
 from bingarde.lib.paging import Paging
 from bingarde.model import FilterPreset, Build, User
-from tests.conftest import ADMIN_EMAIL, STORE_DIR, create_build, login, uploaded
+from tests.conftest import ADMIN_EMAIL, STORE_DIR, create_build, login, store_path, uploaded
 
 
 def total_shown(resp):
@@ -168,7 +168,7 @@ def test_delete_button_only_for_admins(wsgi_app, app):
 
 def test_admin_deletes_builds_and_their_files(wsgi_app, app, db):
     build = create_build(app)
-    name = uploaded(app, build["id"], "a.txt", b"x")["path"]
+    name = store_path(uploaded(app, build["id"], "a.txt", b"x"))
     admin, csrf = login(wsgi_app, ADMIN_EMAIL)
     resp = admin.post("/builds/delete", {str(build["id"]): str(build["id"]), "_csrf_token": csrf}, status=302)
     assert resp.location.endswith("/builds")

@@ -26,6 +26,28 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
+# Range of the integer columns (ids, build numbers). Larger values from a
+# request must not reach the database, which would fail with an error.
+INT_MIN, INT_MAX = -2 ** 31, 2 ** 31 - 1
+
+
+def db_int(value):
+    """``value`` as an int in the integer column range, or None."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if INT_MIN <= number <= INT_MAX else None
+
+
+def get_row(cls, ident):
+    """The ``cls`` row whose id is ``ident`` (a request value of any kind), or None."""
+    pk = db_int(ident)
+    return DBSession.get(cls, pk) if pk is not None else None
+
+
 def init_model(engine):
     """Bind the session to the engine. The schema itself comes from Alembic."""
     DBSession.configure(bind=engine)

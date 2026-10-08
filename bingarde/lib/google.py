@@ -1,7 +1,8 @@
 """Google sign-in (OpenID Connect, authorization code flow with PKCE).
 
-1. ``start_login`` stores state, nonce and the PKCE verifier in the session and
-   returns Google's consent URL.
+1. ``start_login`` keeps state, nonce and the PKCE verifier in a signed cookie
+   for 10 minutes (no session before sign-in, see lib/cookies.py) and returns
+   Google's consent URL.
 2. Google redirects back to /login/google/callback. ``finish_login`` checks the
    state, swaps the code for tokens, and verifies the id_token: signature
    (Google's published keys), issuer, audience, expiry, nonce, verified e-mail
@@ -23,8 +24,9 @@ from authlib.integrations.requests_client import OAuth2Session
 from joserfc import jwt
 from joserfc.errors import JoseError
 from joserfc.jwk import KeySet
-from tg import config, session
+from tg import config
 
+from bingarde.lib import cookies
 from bingarde.lib.identity import allowed_email_domains, email_allowed
 
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -32,13 +34,18 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 ISSUERS = ["https://accounts.google.com", "accounts.google.com"]
 JWKS_TTL = 3600
-SESSION_KEY = "google_oauth"
+PENDING_COOKIE = "bg_google_login"
+PENDING_AGE = 600
 # Personal Google accounts have these domains and never an hd claim.
 CONSUMER_DOMAINS = {"gmail.com", "googlemail.com"}
 
 
 class GoogleLoginError(Exception):
-    pass
+    """``code`` is one of controllers.auth.LOGIN_ERRORS; the message is for the log."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
 
 
 def configured():
@@ -56,31 +63,32 @@ def _client():
 
 def start_login(came_from="/"):
     if not configured():
-        raise GoogleLoginError("Google login is not configured")
+        raise GoogleLoginError("not_configured", "Google login is not configured")
     state = secrets.token_urlsafe(24)
     nonce = secrets.token_urlsafe(24)
     verifier = secrets.token_urlsafe(48)
     url, _ = _client().create_authorization_url(
         AUTHORIZE_URL, state=state, nonce=nonce, code_verifier=verifier,
         prompt="select_account")
-    session[SESSION_KEY] = {"state": state, "nonce": nonce,
-                            "verifier": verifier, "came_from": came_from}
-    session.save()
+    cookies.set_signed(PENDING_COOKIE, {"state": state, "nonce": nonce,
+                                        "verifier": verifier, "came_from": came_from},
+                       PENDING_AGE)
     return url
 
 
 def finish_login(params):
     """Verify the callback. Returns (claims, came_from)."""
-    pending = session.pop(SESSION_KEY, None)
-    session.save()
-    if not pending:
-        raise GoogleLoginError("login session expired, please try again")
+    pending = cookies.get_signed(PENDING_COOKIE)
+    cookies.delete(PENDING_COOKIE)              # one use only
+    if not isinstance(pending, dict):
+        raise GoogleLoginError("expired", "no pending Google login (expired or missing cookie)")
     if params.get("error"):
-        raise GoogleLoginError("Google refused the login: %s" % params["error"])
-    if not params.get("state") or not secrets.compare_digest(params["state"], pending["state"]):
-        raise GoogleLoginError("invalid login state")
+        raise GoogleLoginError("cancelled", "Google refused the login: %r" % params["error"])
+    state = params.get("state")
+    if not isinstance(state, str) or not secrets.compare_digest(state, str(pending.get("state"))):
+        raise GoogleLoginError("google", "invalid login state")
     if not params.get("code"):
-        raise GoogleLoginError("missing authorization code")
+        raise GoogleLoginError("google", "missing authorization code")
 
     tokens = exchange_code(params["code"], pending["verifier"])
     claims = verify_id_token(tokens.get("id_token"), pending["nonce"])
@@ -93,7 +101,7 @@ def exchange_code(code, verifier):
         return _client().fetch_token(TOKEN_URL, grant_type="authorization_code",
                                      code=code, code_verifier=verifier, timeout=15)
     except Exception as exc:
-        raise GoogleLoginError("could not exchange the authorization code: %s" % exc)
+        raise GoogleLoginError("google", "could not exchange the authorization code: %s" % exc)
 
 
 _jwks_cache = {"keys": None, "fetched": 0.0}
@@ -117,7 +125,7 @@ def _key_set(force=False):
 
 def verify_id_token(id_token, nonce):
     if not id_token:
-        raise GoogleLoginError("Google did not return an id_token")
+        raise GoogleLoginError("google", "Google did not return an id_token")
     try:
         try:
             decoded = jwt.decode(id_token, _key_set(), algorithms=["RS256"])
@@ -132,16 +140,16 @@ def verify_id_token(id_token, nonce):
             nonce={"essential": True, "value": nonce},
         ).validate(decoded.claims)
     except JoseError as exc:
-        raise GoogleLoginError("invalid id_token: %s" % exc)
+        raise GoogleLoginError("google", "invalid id_token: %s" % exc)
 
     claims = decoded.claims
     email = claims.get("email") or ""
     if not email or claims.get("email_verified") is not True:
-        raise GoogleLoginError("the Google account has no verified e-mail address")
+        raise GoogleLoginError("unverified", "the Google account has no verified e-mail address")
     if not email_allowed(email):
-        raise GoogleLoginError("%s is not allowed to sign in here" % email)
+        raise GoogleLoginError("not_allowed", "%s is not allowed to sign in here" % email)
     domain = email.rsplit("@", 1)[-1].lower()
     if (allowed_email_domains() and domain not in CONSUMER_DOMAINS
             and str(claims.get("hd") or "").lower() != domain):
-        raise GoogleLoginError("%s is not a Google Workspace account of %s" % (email, domain))
+        raise GoogleLoginError("workspace", "%s is not a Google Workspace account of %s" % (email, domain))
     return claims

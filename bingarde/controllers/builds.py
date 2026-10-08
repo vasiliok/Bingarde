@@ -23,7 +23,7 @@ from webob import Response
 
 from bingarde.lib import filters, identity, storage
 from bingarde.lib.paging import Paging
-from bingarde.model import DBSession, FilterPreset, Build
+from bingarde.model import DBSession, FilterPreset, Build, db_int, get_row
 
 log = logging.getLogger(__name__)
 
@@ -76,10 +76,7 @@ def visible_presets(ident):
 
 
 def get_visible_preset(ident, preset_id):
-    try:
-        preset = DBSession.get(FilterPreset, int(preset_id))
-    except (TypeError, ValueError):
-        preset = None
+    preset = get_row(FilterPreset, preset_id)
     if preset is None or (preset.user_id is not None and preset.user_id != ident.user.id):
         return None
     return preset
@@ -101,10 +98,7 @@ class BuildPage(TGController):
     @expose("jinja:bingarde.templates.build_detail")
     def index(self, **kw):
         identity.page_identity()
-        try:
-            build = DBSession.get(Build, int(self.build_id))
-        except ValueError:
-            build = None
+        build = get_row(Build, self.build_id)
         if build is None:
             abort(404, "Build %s not found" % self.build_id)
         groups = [(role, label, icon, [f for f in build.files if f.role == role])
@@ -243,7 +237,7 @@ class BuildsController(TGController):
     def delete(self, **kw):
         ident = identity.page_identity()
         identity.require_page_post()
-        ids = [int(k) for k in kw if k.isdigit()]
+        ids = [db_int(k) for k in kw if db_int(k) is not None]
         if ids and not ident.is_admin:
             abort(403, "only admins can delete builds")
         for build in DBSession.scalars(select(Build).where(Build.id.in_(ids))):

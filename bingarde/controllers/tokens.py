@@ -10,7 +10,7 @@ from sqlalchemy import select
 from tg import TGController, abort, expose, redirect
 
 from bingarde.lib import identity
-from bingarde.model import ApiToken, DBSession
+from bingarde.model import ApiToken, DBSession, get_row
 
 # Lifetimes offered when creating a token, in days ("" = never expires).
 LIFETIMES = [("30", "30 days"), ("90", "90 days"), ("365", "1 year"), ("", "never")]
@@ -53,10 +53,7 @@ class TokensController(TGController):
     def revoke(self, token_id=None, **kw):
         ident = identity.page_identity()
         identity.require_page_post()
-        try:
-            row = DBSession.get(ApiToken, int(token_id))
-        except (TypeError, ValueError):
-            row = None
+        row = get_row(ApiToken, token_id)
         if row is None or (row.user_id != ident.user.id and not ident.is_admin):
             abort(404)
         if row.revoked_at is None:

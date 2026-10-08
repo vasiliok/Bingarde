@@ -106,7 +106,7 @@ number. These six fields identify it; there can be only one build for each combi
 | `project` | yes | string | project name (up to 100 characters) |
 | `branch` | yes | string | branch name |
 | `platform` | yes | string | e.g. `windows`, `linux`, `ios` |
-| `build` | yes | integer | CI build number |
+| `build` | yes | integer | CI build number (−2147483648 to 2147483647) |
 | `config` | | string | e.g. `release`, `debug` |
 | `arch` | | string | e.g. `x86_64`, `arm64`, `universal` |
 | `revision` | | string | commit hash |
@@ -282,7 +282,6 @@ nginx, the app only checks access and nginx sends the file.
   "id": 253,
   "build_id": 17,
   "name": "Game.pdb",
-  "path": "2026/10/p17/Game.pdb",
   "role": "symbols",
   "size": 552960,
   "sha256": "096bb3d978b437a81e4668712f5264b8f33f66301550642e38b00d03229f6f7e",
@@ -292,5 +291,5 @@ nginx, the app only checks access and nginx sends the file.
 }
 ```
 
-`name` is the name the file was uploaded with; `path` is where it is stored (upload year and
-month, then the build id).
+`name` is the name the file was uploaded with: at most 200 bytes (UTF-8), without control
+characters. Where the server stores the file is not part of the API.

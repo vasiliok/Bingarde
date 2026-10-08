@@ -144,6 +144,20 @@ def upload(app, build_id, filename, content, **fields):
                     upload_files=[(filename, filename, content)], expect_errors=True)
 
 
+_engine = None
+
+
+def store_path(api_file):
+    """Where a file (as the API returns it) is stored, relative to STORE_DIR.
+    The API does not show this path, so it comes from the database."""
+    global _engine
+    from bingarde.model import BuildFile
+    if _engine is None:
+        _engine = create_engine(DATABASE_URL)
+    with Session(_engine) as session:
+        return session.get(BuildFile, api_file["id"]).path
+
+
 def uploaded(app, build_id, filename, content):
     """Upload one file and return its file object."""
     return ok(upload(app, build_id, filename, content), 201)["files"][0]

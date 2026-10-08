@@ -13,7 +13,10 @@ RUN pip install --no-cache-dir -r requirements-test.txt
 
 COPY . .
 
-# Uploaded files and session files live outside the code directory.
-RUN mkdir -p /data/store /tmp/bingarde/sessions
+# Uploaded files and session files live outside the code directory. The web
+# app runs as the unprivileged user "app" (see docker-entrypoint-web.sh).
+RUN useradd --uid 10001 --no-create-home --home-dir /app --shell /usr/sbin/nologin app \
+    && mkdir -p /data/store /tmp/bingarde/sessions /app/staticfiles \
+    && chown -R app:app /data/store /tmp/bingarde /app/staticfiles
 
 CMD ["sh", "/app/docker-entrypoint-web.sh"]

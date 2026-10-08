@@ -246,3 +246,20 @@ def test_deeply_nested_json_is_a_400_not_a_crash(app):
     body = '{"properties": ' + "[" * 100000 + "]" * 100000 + "}"
     resp = app.post("/api/v2/builds", body, content_type="application/json", expect_errors=True)
     assert api_error(resp, 400)["code"] == "bad_json"
+
+
+def test_a_preset_sends_at_most_20_mails_per_hour(app, db, monkeypatch):
+    sent = _capture_mail(monkeypatch)
+    _preset(db, "bob@example.com", True, "Busy")
+    for build in range(25):
+        create_build(app, project="Busy", build=build)
+    assert len(sent) == notify.MAX_MAILS_PER_HOUR == 20
+
+
+def test_the_mail_limit_starts_again_after_an_hour(db):
+    import datetime
+    preset = FilterPreset(name="p", data={}, mail_count=0)
+    start = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+    assert all(notify.take_mail_slot(preset, start) for _ in range(20))
+    assert not notify.take_mail_slot(preset, start + datetime.timedelta(minutes=59))
+    assert notify.take_mail_slot(preset, start + datetime.timedelta(hours=1))

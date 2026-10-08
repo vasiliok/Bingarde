@@ -23,7 +23,7 @@ import operator
 
 from sqlalchemy import and_, func, or_, true
 
-from bingarde.model import Build
+from bingarde.model import Build, db_int
 
 # Fields a filter may use: column and value type. Anything else is rejected.
 FIELDS = {
@@ -51,6 +51,8 @@ OPS = {
 }
 JOINS = {"all": and_, "any": or_}
 MAX_DEPTH = 8
+# "since" / "older_than": at most this many days back (about 270 years).
+MAX_DAYS = 100000
 
 
 class FilterError(ValueError):
@@ -106,8 +108,8 @@ def _condition(node):
 
 def _value(kind, value):
     try:
-        if kind == "int" and not isinstance(value, bool):
-            return int(value)
+        if kind == "int" and db_int(value) is not None:
+            return db_int(value)
         if kind == "date" and isinstance(value, str):
             return datetime.date.fromisoformat(value)
         if kind == "str" and isinstance(value, str):
@@ -119,8 +121,8 @@ def _value(kind, value):
 
 def _days(value):
     days = _value("int", value)
-    if days < 0:
-        raise FilterError("days must not be negative: %r" % (value,))
+    if not 0 <= days <= MAX_DAYS:
+        raise FilterError("days must be between 0 and %d: %r" % (MAX_DAYS, value))
     return days
 
 

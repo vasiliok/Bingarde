@@ -4,7 +4,8 @@ import os
 import zipfile
 
 from bingarde.model import BuildFile
-from tests.conftest import STORE_DIR, api_error, create_build, ok, upload, uploaded
+from tests.conftest import (STORE_DIR, api_error, create_build, ok, store_path, upload,
+                            uploaded)
 
 
 def stored(path):
@@ -22,10 +23,10 @@ def test_upload_requires_at_least_one_file(app):
 def test_upload_attaches_file_to_build_and_writes_it(app, db):
     build = create_build(app)
     f = uploaded(app, build["id"], "a.txt", b"hello world")
-    assert f["path"].endswith("/p%d/a.txt" % build["id"])
+    assert store_path(f).endswith("/p%d/a.txt" % build["id"])
     assert (f["name"], f["build_id"], f["size"]) == ("a.txt", build["id"], len(b"hello world"))
     assert f["download_url"] == "/files/%d" % f["id"]
-    with open(stored(f["path"]), "rb") as fh:
+    with open(stored(store_path(f)), "rb") as fh:
         assert fh.read() == b"hello world"
     assert db.get(BuildFile, f["id"]).build_id == build["id"]
 
@@ -39,8 +40,8 @@ def test_upload_several_files_in_one_request(app):
 
 def test_same_name_twice_keeps_both_files(app):
     build = create_build(app)
-    first = uploaded(app, build["id"], "a.txt", b"one")["path"]
-    second = uploaded(app, build["id"], "a.txt", b"two")["path"]
+    first = store_path(uploaded(app, build["id"], "a.txt", b"one"))
+    second = store_path(uploaded(app, build["id"], "a.txt", b"two"))
     assert first != second and second.endswith("a_1.txt")
     assert open(stored(first), "rb").read() == b"one"
     assert open(stored(second), "rb").read() == b"two"
@@ -48,7 +49,7 @@ def test_same_name_twice_keeps_both_files(app):
 
 def test_path_in_file_name_is_stripped(app):
     build = create_build(app)
-    path = uploaded(app, build["id"], "../../etc/passwd", b"x")["path"]
+    path = store_path(uploaded(app, build["id"], "../../etc/passwd", b"x"))
     assert path.endswith("/p%d/passwd" % build["id"])
     assert os.path.isfile(stored(path))
 
@@ -91,9 +92,10 @@ def test_get_one_file(app):
 def test_delete_removes_row_file_and_empty_folders(app, db):
     build = create_build(app)
     f = uploaded(app, build["id"], "a.txt", b"hello")
+    path = store_path(f)
     assert app.delete("/api/v2/files/%d" % f["id"]).status_int == 204
     assert db.get(BuildFile, f["id"]) is None
-    assert not os.path.exists(stored(f["path"]))
+    assert not os.path.exists(stored(path))
     assert os.listdir(STORE_DIR) == []
 
 
@@ -102,7 +104,7 @@ def test_delete_keeps_sibling_files(app):
     a = uploaded(app, build["id"], "a.txt", b"hello")
     b = uploaded(app, build["id"], "b.txt", b"world")
     app.delete("/api/v2/files/%d" % a["id"])
-    assert os.path.isfile(stored(b["path"]))
+    assert os.path.isfile(stored(store_path(b)))
 
 
 def test_delete_unknown_file_is_404(app):
@@ -111,7 +113,7 @@ def test_delete_unknown_file_is_404(app):
 
 def test_deleting_a_build_removes_its_files_from_disk(app, db):
     build = create_build(app)
-    path = uploaded(app, build["id"], "a.txt", b"hello")["path"]
+    path = store_path(uploaded(app, build["id"], "a.txt", b"hello"))
     app.delete("/api/v2/builds/%d" % build["id"])
     assert not os.path.exists(stored(path))
     assert db.query(BuildFile).count() == 0
@@ -163,7 +165,7 @@ def test_archive_is_streamed_without_a_temp_file(app, monkeypatch):
 def test_archive_with_a_file_missing_on_disk_is_500_before_streaming(app):
     build = create_build(app)
     f = uploaded(app, build["id"], "a.txt", b"a")
-    os.remove(stored(f["path"]))
+    os.remove(stored(store_path(f)))
     assert api_error(app.get("/api/v2/builds/%d/archive" % build["id"], expect_errors=True),
                      500)["code"] == "file_missing"
 
@@ -187,3 +189,11 @@ def test_upload_takes_at_most_100_files(app):
     files = [("f%d" % i, "f%d.txt" % i, b"x") for i in range(101)]
     resp = app.post("/api/v2/builds/%d/files" % build["id"], upload_files=files, expect_errors=True)
     assert "at most 100 files" in api_error(resp, 422)["message"]
+
+
+def test_file_names_with_control_characters_or_too_long_are_refused(app, db):
+    build = create_build(app)
+    for name in ("a\x00b.txt", "a\x07b.txt", "a\x7fb.txt", "A" * 201):
+        assert "file name" in api_error(upload(app, build["id"], name, b"x"), 422)["message"]
+    assert db.query(BuildFile).count() == 0
+    assert ok(upload(app, build["id"], "A" * 200, b"x"), 201)        # 200 bytes is fine

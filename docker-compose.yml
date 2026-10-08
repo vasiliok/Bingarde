@@ -19,7 +19,10 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: bingarde
-      POSTGRES_PASSWORD: bingarde
+      # Demo value. The database is not published to the host; still, set
+      # POSTGRES_PASSWORD for a real deployment (it takes effect when the
+      # database volume is first created).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bingarde}
       POSTGRES_DB: bingarde
     volumes:
       # Creates the second database used by the test suite.
@@ -39,7 +42,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg://bingarde:bingarde@db/bingarde_test
+      DATABASE_URL: postgresql+psycopg://bingarde:${POSTGRES_PASSWORD:-bingarde}@db/bingarde_test
     command: pytest -v
 
   # ---- REAL APP: TurboGears2 (gunicorn) ---------------------------------
@@ -50,7 +53,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg://bingarde:bingarde@db/bingarde
+      DATABASE_URL: postgresql+psycopg://bingarde:${POSTGRES_PASSWORD:-bingarde}@db/bingarde
       # Demo value only. Set a long random string for any real deployment.
       SESSION_SECRET: change-me-demo-only
       BASE_URL: http://localhost:8080/

@@ -27,7 +27,7 @@ from webob import Response
 from bingarde.lib import filetypes, filters, identity, notify, storage
 from bingarde.lib.api import (ApiError, endpoint, error_response, invalid, json_body,
                                 methods, not_found)
-from bingarde.model import DBSession, Build, BuildFile
+from bingarde.model import DBSession, Build, BuildFile, db_int, get_row
 from bingarde.model.build import FILE_ROLES, BUILD_STATUSES
 
 # The fields that identify a build; the first four are required.
@@ -50,12 +50,10 @@ MAX_LIMIT = 1000
 
 
 def to_int(name, value):
-    if isinstance(value, bool):
-        raise invalid("%s must be an integer" % name)
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        raise invalid("%s must be an integer" % name)
+    number = db_int(value)
+    if number is None:
+        raise invalid("%s must be an integer between %d and %d" % (name, -2 ** 31, 2 ** 31 - 1))
+    return number
 
 
 def _too_deep(value, levels):
@@ -118,20 +116,14 @@ def check_may_change(caller, build):
 
 
 def get_build(build_id):
-    try:
-        build = DBSession.get(Build, int(build_id))
-    except (TypeError, ValueError):
-        build = None
+    build = get_row(Build, build_id)
     if build is None:
         raise not_found("build", build_id)
     return build
 
 
 def get_file(file_id):
-    try:
-        build_file = DBSession.get(BuildFile, int(file_id))
-    except (TypeError, ValueError):
-        build_file = None
+    build_file = get_row(BuildFile, file_id)
     if build_file is None:
         raise not_found("file", file_id)
     return build_file
@@ -157,7 +149,8 @@ class BuildsController(TGController):
             where.append(Build.build == to_int("build", kw["build"]))
         if kw.get("revision"):
             # A short hash finds the full one.
-            where.append(func.lower(Build.revision).startswith(kw["revision"].lower()))
+            where.append(func.lower(Build.revision).startswith(kw["revision"].lower(),
+                                                              autoescape=True))
         if kw.get("filter"):
             try:
                 where.append(filters.clause(json.loads(kw["filter"])))

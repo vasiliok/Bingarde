@@ -1,0 +1,20 @@
+[
+  {"name": "debug symbols", "role": "symbols",
+   "endings": [".dsym.zip", ".sym.zip", ".symbols.zip", ".pdb.zip", ".debug.zip",
+               ".pdb", ".sym", ".dsym", ".debug", ".dbg", ".breakpad"]},
+  {"name": "test reports", "role": "report",
+   "endings": [".junit.xml", ".test-results.xml", ".trx", ".coverage", ".lcov",
+               ".coverage.xml", ".report.html"]},
+  {"name": "build logs", "role": "log", "endings": [".log", ".log.gz", ".log.zip"]},
+  {"name": "Apple apps", "role": "artifact", "icon": "bi-apple", "endings": [".ipa", ".dmg", ".pkg"]},
+  {"name": "Windows apps", "role": "artifact", "icon": "bi-windows",
+   "endings": [".exe", ".msi", ".msix", ".appx"]},
+  {"name": "Android apps", "role": "artifact", "icon": "bi-android2", "endings": [".apk", ".aab"]},
+  {"name": "Linux packages", "role": "artifact", "icon": "bi-tux",
+   "endings": [".deb", ".rpm", ".appimage"]},
+  {"name": "Java archives", "role": "artifact", "icon": "bi-filetype-java", "endings": [".jar", ".war"]},
+  {"name": "Python wheels", "role": "artifact", "icon": "bi-filetype-py", "endings": [".whl"]},
+  {"name": "NuGet packages", "role": "artifact", "icon": "bi-box-seam", "endings": [".nupkg"]},
+  {"name": "archives", "role": "artifact", "icon": "bi-file-earmark-zip",
+   "endings": [".tar.gz", ".tgz", ".zip", ".7z"]}
+]

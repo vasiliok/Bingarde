@@ -127,7 +127,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-270 pytest tests against PostgreSQL.
+278 pytest tests against PostgreSQL.
 
 ## Tech stack
 

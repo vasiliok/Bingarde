@@ -24,7 +24,7 @@
                 {{ status_badge(build.status) }}
                 {% if main_file %}
                 <a class="btn btn-primary ms-auto" href="/files/{{ main_file.id }}" id="id-main-download">
-                    <i class="bi bi-download me-1"></i>Download {{ main_file.display_name }}
+                    <i class="bi {{ h.file_icon(main_file.display_name) }} me-1"></i>Download {{ main_file.display_name }}
                     <span class="opacity-75">({{ h.format_size(main_file.size) }})</span>
                 </a>
                 {% endif %}

@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 
 from tg import request
 
-from bingarde.lib import identity, storage
+from bingarde.lib import filetypes, identity, storage
 
 
 def static(path):
@@ -31,6 +31,11 @@ def format_size(num):
     exponent = min(int(math.log(num, 1024)), len(units))
     unit, decimals = units[exponent - 1]
     return "%.*f %s" % (decimals, num / 1024 ** exponent, unit)
+
+
+def file_icon(filename):
+    """Bootstrap Icons class for a file to download, from its name (lib/filetypes.py)."""
+    return filetypes.icon_for(filename)
 
 
 def format_date(value, fmt="%Y-%m-%d %H:%M"):

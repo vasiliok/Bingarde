@@ -1,12 +1,14 @@
 """Build fields (revision, status, config, arch, CI link, properties) and file roles."""
 import hashlib
+import json
 import os
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import select, text
 
-from bingarde.lib.filetypes import detect_role
+from bingarde.lib.filetypes import FILE_TYPES_PATH, detect_role, icon_for, load_types
 from bingarde.lib.filters import clause
 from bingarde.model import Build, BuildFile
 from tests.conftest import (HERE, STORE_DIR, api_error, client, create_build, login, make_token,
@@ -112,6 +114,34 @@ def test_role_is_detected_from_the_file_name():
     assert detect_role("notes.txt") == "other"
 
 
+def test_download_icon_follows_the_file_type():
+    assert icon_for("App.ipa") == icon_for("App.dmg") == "bi-apple"
+    assert icon_for("Setup.EXE") == icon_for("app.msi") == "bi-windows"
+    assert icon_for("app.apk") == "bi-android2"
+    assert icon_for("app.deb") == "bi-tux"
+    assert icon_for("app-x86_64.tar.gz") == icon_for("bundle.zip") == "bi-file-earmark-zip"
+    assert icon_for("demoapp") == icon_for(None) == "bi-download"
+
+
+def test_file_types_config_is_valid():
+    assert load_types(FILE_TYPES_PATH)
+
+
+@pytest.mark.parametrize("data, words", [
+    ({"role": "artifact", "endings": [".zip"]}, "list of entries"),
+    (["not an object"], "entry 1: must be an object"),
+    ([{"name": "x", "role": "secret", "endings": [".x"]}], "entry 1 (x): role"),
+    ([{"name": "x", "role": "log", "endings": ["log"]}], "endings"),
+    ([{"name": "x", "role": "log", "endings": []}], "endings"),
+    ([{"name": "x", "role": "log", "endings": [".log"], "icon": "apple"}], "icon"),
+])
+def test_bad_file_types_config_is_rejected(tmp_path, data, words):
+    path = tmp_path / "filetypes.json"
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match=words.replace("(", r"\(").replace(")", r"\)")):
+        load_types(str(path))
+
+
 def test_upload_records_role_checksum_and_name(app, db):
     build = create_build(app)
     body = b"symbols" * 1000
@@ -163,6 +193,7 @@ def test_build_page_groups_files_and_shows_fields(wsgi_app, app):
     assert 'data-role="artifact"' in page and 'data-role="symbols"' in page and 'data-role="log"' in page
     assert page.index('data-role="artifact"') < page.index('data-role="symbols"') < page.index('data-role="log"')
     assert 'id="id-main-download"' in page and "Download App.ipa" in page
+    assert 'class="bi bi-apple me-1"></i>Download App.ipa' in page
     assert "3f9c2a1b7e0d" in page and "https://ci.example.com/job/42" in page
     assert "release" in page and "arm64" in page and ">uploading<" in page
     assert 'id="id-properties-table"' in page and "flavor" in page

@@ -228,6 +228,11 @@ when all were already there.
 | `artifact` | `.ipa`, `.apk`, `.aab`, `.exe`, `.msi`, `.msix`, `.appx`, `.dmg`, `.pkg`, `.deb`, `.rpm`, `.appimage`, `.jar`, `.war`, `.nupkg`, `.whl`, `.tar.gz`, `.tgz`, `.zip`, `.7z` |
 | `other` | anything else |
 
+The list lives in [`bingarde/config/filetypes.json`](../bingarde/config/filetypes.json):
+entries are checked from top to bottom, the first matching ending wins. Each entry can also
+name an icon (a Bootstrap Icons class such as `bi-apple`) for the download button on the build
+page. Edit the file to add file types, then restart the app; it reads the file once.
+
 ```bash
 curl -H "Authorization: Bearer $TOKEN" https://bingarde.example.com/api/v2/builds/17/files \
   -F f0=@Game.exe -F f1=@Game.pdb -F f2=@build.log

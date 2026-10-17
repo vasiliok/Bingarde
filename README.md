@@ -98,7 +98,8 @@ curl -fsS -H "$AUTH" -H "Content-Type: application/json" -X PATCH "$API/builds/$
 ```
 
 Find builds with `GET /api/v2/builds?project=game&branch=main&status=complete`.
-All endpoints, fields and errors are described in [docs/api.md](docs/api.md).
+All endpoints, fields and errors are described in [docs/api.md](docs/api.md); which code answers
+each path is in [docs/api-routing.md](docs/api-routing.md).
 
 ## Configuration
 

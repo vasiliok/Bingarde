@@ -2,6 +2,7 @@
 
 CI jobs use this API to store builds and their files. All paths start with `/api/v2`.
 For a ready-made client, see [`scripts/bingarde-upload.py`](../scripts/bingarde-upload.py).
+Which code answers each path is described in [api-routing.md](api-routing.md).
 
 - [Authentication](#authentication)
 - [Requests, responses and errors](#requests-responses-and-errors)

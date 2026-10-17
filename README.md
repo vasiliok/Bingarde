@@ -1,10 +1,12 @@
 # Bingarde
 
-A self-hosted store for CI build artifacts. CI jobs upload builds through a small REST API.
-People browse, filter and download them in a web UI.
-
-Each build keeps its installers, debug symbols (`.pdb`, `.dSYM`, `.debug`), logs and test
-reports together, with the commit, status, config, architecture and a link to the CI job.
+Bingarde is a self-hosted store for CI build artifacts: installers, debug symbols, logs and
+test reports. CI jobs upload each build through a small REST API, with its project, branch,
+platform, config, architecture, commit and status. People browse the builds in a web UI,
+filter them with a condition builder of AND/OR groups, save filters as presets, and get an
+e-mail when a new build matches. Files can be downloaded one at a time or as a whole build in
+one zip, and nginx serves them after the app checks access. People sign in with Google, and
+CI jobs use scoped API tokens.
 
 ![Builds filtered with two condition groups](docs/screenshots/condition-builder.png)
 
@@ -125,12 +127,23 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-278 pytest tests against PostgreSQL.
+270 pytest tests against PostgreSQL.
 
-## Stack
+## Tech stack
 
-Python 3.12, TurboGears 2.5, SQLAlchemy 2.1, Alembic, PostgreSQL 16, Jinja2, Authlib,
-gunicorn, nginx, Bootstrap 5.
+- **Backend:** Python 3.12, TurboGears 2.5, SQLAlchemy 2.1, Alembic, Jinja2 templates,
+  gunicorn
+- **Database:** PostgreSQL 16 (psycopg 3)
+- **Web server:** nginx 1.27 (reverse proxy, static files, `X-Accel-Redirect` downloads,
+  streamed uploads)
+- **Auth:** Google OpenID Connect with PKCE (Authlib, joserfc), hashed API tokens,
+  CSRF-protected sessions (Beaker)
+- **Frontend:** Bootstrap 5.3, Bootstrap Icons, plain JavaScript, with jQuery 3.7 for the
+  condition builder
+- **Tests:** pytest and WebTest
+- **Deployment:** Docker and Docker Compose
+- **CI client:** a dependency-free Python upload script
+  ([`scripts/bingarde-upload.py`](scripts/bingarde-upload.py))
 
 ## License
 

@@ -2,6 +2,9 @@
 
 All notable changes to Bingarde. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for incompatible API changes, MINOR for new features, PATCH for fixes.
+How to keep it: [docs/versioning.md](docs/versioning.md).
+
+## Unreleased
 
 ## 1.0.0 - 2026-10-18
 

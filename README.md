@@ -153,7 +153,8 @@ place, `__version__` in [`bingarde/__init__.py`](bingarde/__init__.py), and show
 footer, in `/health` and in the `X-Bingarde-Version` header of every API response.
 
 To release: change `__version__`, add an entry to [CHANGELOG.md](CHANGELOG.md), commit, and tag
-the commit `vX.Y.Z`.
+the commit `vX.Y.Z`. Which number to raise, how to keep the changelog and the full release
+checklist are in [docs/versioning.md](docs/versioning.md).
 
 ## License
 

@@ -51,6 +51,10 @@
 
     {% block content %}{% endblock %}
 
+    <footer class="container-fluid px-4 py-3 small text-body-secondary" id="id-footer">
+        Bingarde {{ h.version }}
+    </footer>
+
     <script src="{{ h.static('bootstrap5/js/bootstrap.bundle.min.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

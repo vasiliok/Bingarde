@@ -127,7 +127,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-278 pytest tests against PostgreSQL.
+281 pytest tests against PostgreSQL.
 
 ## Tech stack
 
@@ -144,6 +144,16 @@ docker compose --profile test up --build --abort-on-container-exit
 - **Deployment:** Docker and Docker Compose
 - **CI client:** a dependency-free Python upload script
   ([`scripts/bingarde-upload.py`](scripts/bingarde-upload.py))
+
+## Versioning
+
+Bingarde follows [Semantic Versioning](https://semver.org): MAJOR.MINOR.PATCH, where MAJOR
+means an incompatible API change, MINOR new features and PATCH fixes. The version is set in one
+place, `__version__` in [`bingarde/__init__.py`](bingarde/__init__.py), and shows in the page
+footer, in `/health` and in the `X-Bingarde-Version` header of every API response.
+
+To release: change `__version__`, add an entry to [CHANGELOG.md](CHANGELOG.md), commit, and tag
+the commit `vX.Y.Z`.
 
 ## License
 

@@ -4,6 +4,7 @@ import logging
 from sqlalchemy import text
 from tg import TGController, abort, expose, redirect, request, response
 
+from bingarde import __version__
 from bingarde.controllers.api import ApiController
 from bingarde.controllers.auth import LoginController
 from bingarde.controllers.error import ErrorController
@@ -41,7 +42,7 @@ class RootController(TGController):
         ok = database_ok()
         if not ok:
             response.status_int = 503
-        return dict(status="ok" if ok else "error", database=ok)
+        return dict(status="ok" if ok else "error", database=ok, version=__version__)
 
     @expose()
     def logout(self, **kw):

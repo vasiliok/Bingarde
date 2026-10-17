@@ -5,7 +5,11 @@ from urllib.parse import urlencode
 
 from tg import request
 
+from bingarde import __version__
 from bingarde.lib import filetypes, identity, storage
+
+# The running Bingarde version (shown in the page footer).
+version = __version__
 
 
 def static(path):

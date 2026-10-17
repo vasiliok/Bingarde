@@ -6,7 +6,8 @@ which are ``multipart/form-data``. Responses are JSON:
   success:  the object itself, or {"builds": [...]} / {"files": [...]} for lists
   failure:  {"error": {"code": "<slug>", "message": "<text>"}} with a 4xx/5xx status
 
-Nothing a failed request wrote is committed.
+Nothing a failed request wrote is committed. Every API response carries the
+X-Bingarde-Version header.
 """
 import functools
 import json
@@ -16,6 +17,7 @@ import transaction
 from tg import request
 from webob import Response
 
+from bingarde import __version__
 from bingarde.lib.identity import AuthError
 
 log = logging.getLogger(__name__)
@@ -40,11 +42,17 @@ def invalid(message):
     return ApiError(422, "invalid", message)
 
 
+def with_version(resp):
+    """Tell API clients which Bingarde version answered (X-Bingarde-Version)."""
+    resp.headers["X-Bingarde-Version"] = __version__
+    return resp
+
+
 def json_response(data, status=200):
     if status == 204:
-        return Response(status=204)
-    return Response(json.dumps(data), status=status,
-                    content_type="application/json", charset="utf-8")
+        return with_version(Response(status=204))
+    return with_version(Response(json.dumps(data), status=status,
+                                 content_type="application/json", charset="utf-8"))
 
 
 def error_response(status, code, message):
@@ -98,7 +106,7 @@ def endpoint(func):
             log.exception("API call %s failed", func.__name__)
             return error_response(500, "internal", "internal server error")
         if isinstance(result, Response):
-            return result
+            return with_version(result)
         data, status = result if isinstance(result, tuple) else (result, 200)
         return json_response(data, status)
     return wrapper

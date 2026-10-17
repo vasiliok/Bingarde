@@ -63,7 +63,8 @@ header, not as a form field.
 
 Request bodies are JSON (`Content-Type: application/json`), except file uploads, which are
 `multipart/form-data`. Responses are JSON: the object itself, or for lists an object such as
-`{"builds": [...], "total": 42}`. `DELETE` answers `204 No Content`.
+`{"builds": [...], "total": 42}`. `DELETE` answers `204 No Content`. Every API response
+carries the Bingarde version in the `X-Bingarde-Version` header (e.g. `1.0.0`).
 
 A request body needs a `Content-Length` header (no chunked encoding). File uploads may be as
 large as the server allows (`BINGARDE_MAX_UPLOAD`, 20 GB by default); any other body may be

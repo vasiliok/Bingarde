@@ -1,4 +1,10 @@
-# Bingarde
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/bingarde-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/logo/bingarde-logo-light.svg">
+    <img src="docs/logo/bingarde-logo-light.svg" alt="Bingarde, build artifact storage" width="480">
+  </picture>
+</p>
 
 Bingarde is a self-hosted store for CI build artifacts: installers, debug symbols, logs and
 test reports. CI jobs upload each build through a small REST API, with its project, branch,

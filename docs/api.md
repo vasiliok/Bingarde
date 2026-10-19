@@ -256,7 +256,10 @@ curl -H "Authorization: Bearer $TOKEN" https://bingarde.example.com/api/v2/build
 
 `GET /files/{id}` (the `download_url` of a file) — the file itself, with its original name.
 Accepts a token or a browser session; without either, it redirects to the login page. Behind
-nginx, the app only checks access and nginx sends the file.
+nginx, the app only checks access and nginx sends the file. When the server keeps its files in
+S3 (see [storage.md](storage.md)), the answer is a `302` redirect to a presigned URL that is
+valid for a few minutes, so clients must follow redirects (`curl -L`). curl and Python
+`requests` do not send the `Authorization` header to the other host; the URL needs none.
 
 ## Objects
 

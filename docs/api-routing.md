@@ -56,8 +56,10 @@ All handlers are in `bingarde/controllers/api.py`.
 ## Not under /api/v2
 
 The `download_url` of a file, `GET /files/<id>`, is served by `FilesController` in
-`bingarde/controllers/files.py`. It accepts a token or a browser session; behind nginx it only
-checks access and answers with `X-Accel-Redirect`, and nginx sends the file.
+`bingarde/controllers/files.py`. It accepts a token or a browser session, then hands the file
+to the storage backend (`storage.download_response()`, see [storage.md](storage.md)): on the
+local disk behind nginx it answers with `X-Accel-Redirect` and nginx sends the file; on S3 it
+answers `302` with a presigned URL.
 
 ## Adding an endpoint
 

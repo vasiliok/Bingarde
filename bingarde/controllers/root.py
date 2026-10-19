@@ -11,7 +11,7 @@ from bingarde.controllers.error import ErrorController
 from bingarde.controllers.files import FilesController
 from bingarde.controllers.builds import BuildsController
 from bingarde.controllers.tokens import TokensController
-from bingarde.lib import identity
+from bingarde.lib import identity, storage
 from bingarde.model import DBSession
 
 log = logging.getLogger(__name__)
@@ -23,6 +23,15 @@ def database_ok():
     except Exception:
         log.exception("database check failed")
         return False
+
+
+def storage_ok():
+    try:
+        storage.check()
+    except storage.StorageError:
+        log.exception("storage check failed")
+        return False
+    return True
 
 
 class RootController(TGController):
@@ -39,10 +48,12 @@ class RootController(TGController):
 
     @expose("json")
     def health(self):
-        ok = database_ok()
+        database, store = database_ok(), storage_ok()
+        ok = database and store
         if not ok:
             response.status_int = 503
-        return dict(status="ok" if ok else "error", database=ok, version=__version__)
+        return dict(status="ok" if ok else "error", database=database, storage=store,
+                    version=__version__)
 
     @expose()
     def logout(self, **kw):

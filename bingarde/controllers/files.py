@@ -1,28 +1,15 @@
 """/files/<id>: download one uploaded file.
 
-Needs a browser login or an API token. With ``xaccel`` on (Docker, behind
-nginx) the app only checks access and answers with an X-Accel-Redirect
-header; nginx then sends the file itself from its internal /_store/ location.
-Without nginx (tests, local runs) the app streams the file.
+Needs a browser login or an API token. The app only checks access; how the
+bytes are sent depends on the storage backend (lib/storage): from the local
+disk through nginx (X-Accel-Redirect) or the app, or from S3 through a
+redirect to a short-lived presigned URL.
 """
-import os
-from urllib.parse import quote
-
-from tg import TGController, abort, config, expose, redirect, request
-from webob import Response
-from webob.static import FileApp
+from tg import TGController, abort, expose, redirect, request
 
 from bingarde.lib import identity, storage
+from bingarde.lib.storage import content_disposition  # noqa: F401  (used by tests)
 from bingarde.model import BuildFile, get_row
-
-
-def xaccel_enabled():
-    return str(config.get("xaccel", "")).lower() in ("1", "true", "yes")
-
-
-def content_disposition(name):
-    ascii_name = name.encode("ascii", "replace").decode("ascii").replace('"', "_")
-    return "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (ascii_name, quote(name))
 
 
 class FilesController(TGController):
@@ -38,16 +25,9 @@ class FilesController(TGController):
         build_file = get_row(BuildFile, file_id)
         if build_file is None:
             abort(404, "File not found")
-
-        full = storage.absolute_path(build_file.path)
-        if not os.path.isfile(full):
-            abort(404, "File is missing on disk")
-        name = os.path.basename(full)
-
-        if xaccel_enabled():
-            resp = Response(content_type="application/octet-stream")
-            resp.headers["X-Accel-Redirect"] = "/_store/" + quote(build_file.path)
-        else:
-            resp = request.get_response(FileApp(full, content_type="application/octet-stream"))
-        resp.headers["Content-Disposition"] = content_disposition(name)
-        return resp
+        try:
+            return storage.download_response(build_file, request)
+        except storage.NotFound:
+            abort(404, "File is missing in the store")
+        except storage.StorageError:
+            abort(503, "The file store is not available")

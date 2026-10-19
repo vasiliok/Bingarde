@@ -16,8 +16,9 @@ def test_root_redirects_to_build_list(anon):
     assert resp.location.endswith("/builds")
 
 
-def test_health_reports_database_and_version(app):
-    assert app.get("/health").json == {"status": "ok", "database": True, "version": __version__}
+def test_health_reports_database_storage_and_version(app):
+    assert app.get("/health").json == {"status": "ok", "database": True, "storage": True,
+                                      "version": __version__}
 
 
 def test_version_is_semver():

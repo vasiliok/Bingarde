@@ -13,3 +13,5 @@ gunicorn==26.2.0
 Authlib==1.8.0
 joserfc==1.7.5
 requests==2.34.2
+# S3 storage backend (storage = s3).
+boto3==1.43.114

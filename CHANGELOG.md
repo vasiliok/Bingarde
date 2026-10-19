@@ -6,6 +6,15 @@ How to keep it: [docs/versioning.md](docs/versioning.md).
 
 ## Unreleased
 
+### Added
+
+- Build files can be kept in an S3 bucket (AWS or S3-compatible) instead of the local disk:
+  set `STORAGE=s3` and the `S3_*` settings. Downloads then redirect to a short-lived presigned
+  URL, so API clients must follow redirects. The default stays `local`. See
+  [docs/storage.md](docs/storage.md).
+- `/health` also reports whether the file store can be used (`"storage": true`).
+- `python -m bingarde.lib.storage.copy` copies the files of a running install to the bucket.
+
 ## 1.0.0 - 2026-10-18
 
 First release.

@@ -1,6 +1,5 @@
 """Template helpers, available in templates as ``h``."""
 import math
-import shutil
 from urllib.parse import urlencode
 
 from tg import request
@@ -63,9 +62,8 @@ def can_write(user):
 
 
 def storage_usage():
-    """(free bytes, total bytes) of the disk that holds uploaded files."""
+    """(free bytes, total bytes) of the file store, or None (an S3 bucket has no size)."""
     try:
-        usage = shutil.disk_usage(storage.store_dir())
-    except OSError:
+        return storage.usage()
+    except storage.StorageError:
         return None
-    return usage.free, usage.total

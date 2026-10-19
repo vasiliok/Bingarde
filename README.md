@@ -27,6 +27,9 @@ CI jobs use scoped API tokens.
 - **Fast, protected downloads.** The app checks the login, then nginx sends the file
   (`X-Accel-Redirect`). Big uploads stream to disk without buffering. Download a whole
   build as one zip.
+- **Local disk or S3.** Files stay in a folder or go to an S3 bucket (AWS or any
+  S3-compatible store), chosen with one setting. S3 downloads go straight from the bucket
+  through short-lived signed links. See [docs/storage.md](docs/storage.md).
 - **Login.** Google sign-in (OpenID Connect with PKCE) for people, scoped API tokens
   (`read` / `write`) for CI. Only token hashes are stored. Forms are CSRF-protected.
 
@@ -121,7 +124,9 @@ Set with environment variables (see `docker-compose.yml`):
 | `BLOCKED_EMAILS` | Users who lose access at once, sessions and tokens included |
 | `WRITER_EMAILS`, `WRITER_DOMAINS` | Who may create builds and write tokens (`*` = everyone); others only read |
 | `DEV_LOGIN` | `1` = e-mail-only login, for local demos only |
-| `STORE_DIR` | Where uploaded files are kept |
+| `STORAGE` | `local` (default, files in `STORE_DIR`) or `s3` (files in a bucket) |
+| `STORE_DIR` | Where uploaded files are kept with `STORAGE=local` |
+| `S3_BUCKET`, `S3_PREFIX`, `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_URL_TTL` | The bucket with `STORAGE=s3`, see [docs/storage.md](docs/storage.md); credentials via `AWS_*` variables or an IAM role |
 | `BINGARDE_PORT`, `BINGARDE_MAX_UPLOAD` | Host port (8080) and upload limit (20g) |
 | `BINGARDE_BIND` | Host address nginx listens on (`127.0.0.1`; `0.0.0.0` = the network) |
 | `POSTGRES_PASSWORD` | Database password (demo default `bingarde`; set before the first start) |
@@ -134,7 +139,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-281 pytest tests against PostgreSQL.
+321 pytest tests against PostgreSQL and an S3 test store (moto).
 
 ## Tech stack
 
@@ -148,6 +153,7 @@ docker compose --profile test up --build --abort-on-container-exit
 - **Frontend:** Bootstrap 5.3, Bootstrap Icons, plain JavaScript, with jQuery 3.7 for the
   condition builder
 - **Tests:** pytest and WebTest
+- **File storage:** local disk or S3 (boto3; moto as the S3 store in tests and the demo)
 - **Deployment:** Docker and Docker Compose
 - **CI client:** a dependency-free Python upload script
   ([`scripts/bingarde-upload.py`](scripts/bingarde-upload.py))

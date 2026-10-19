@@ -3,7 +3,7 @@ import logging
 import os
 
 from bingarde.config.app_cfg import base_config
-from bingarde.lib import session_cleanup
+from bingarde.lib import session_cleanup, storage
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +34,13 @@ ENV_OVERRIDES = {
     "GOOGLE_CLIENT_ID": "google_client_id",
     "GOOGLE_CLIENT_SECRET": "google_client_secret",
     "XACCEL": "xaccel",
+    "STORAGE": "storage",
+    "S3_BUCKET": "s3_bucket",
+    "S3_PREFIX": "s3_prefix",
+    "S3_ENDPOINT": "s3_endpoint",
+    "S3_PUBLIC_ENDPOINT": "s3_public_endpoint",
+    "S3_REGION": "s3_region",
+    "S3_URL_TTL": "s3_url_ttl",
     "MAX_REQUEST_BODY": "max_request_body",
 }
 
@@ -61,7 +68,9 @@ def _enabled(value):
 
 
 def check_settings(app_conf):
-    """Refuse the demo secret outside the demo, and warn about open settings."""
+    """Refuse the demo secret outside the demo or a broken storage setting, and warn
+    about open settings."""
+    storage.check_settings(app_conf)
     dev_login = _enabled(app_conf.get("dev_login"))
     if app_conf["session.secret"] == DEMO_SESSION_SECRET and not dev_login:
         raise RuntimeError("SESSION_SECRET is the demo value from docker-compose.yml; "

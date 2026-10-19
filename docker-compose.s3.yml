@@ -1,0 +1,63 @@
+# The "run" stack with build files in S3 instead of the "store" volume.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.s3.yml --profile run up --build
+#   -> open http://localhost:8080
+#
+# The S3 store here is moto, an S3 fake for demos and tests: it keeps the
+# files in memory, so they are gone when its container stops (the database
+# keeps the rows; downloads then answer "missing in the store"). For a real
+# deployment point S3_ENDPOINT at your S3-compatible store, or leave it empty
+# for AWS, and pass real credentials. See docs/storage.md.
+#
+# Optional: BINGARDE_S3_PORT=9001 (host port of the S3 store, default 9000;
+# download links point there).
+
+services:
+  s3:
+    image: motoserver/moto:5.2.3
+    profiles: ["test", "run"]
+    ports:
+      # Download links are presigned URLs on this address, so the browser
+      # must reach it. Only this machine can.
+      - "127.0.0.1:${BINGARDE_S3_PORT:-9000}:5000"
+
+  # Creates the bucket once moto is up, then exits.
+  s3-init:
+    build: .
+    profiles: ["run"]
+    depends_on:
+      - s3
+    environment:
+      AWS_ACCESS_KEY_ID: demo
+      AWS_SECRET_ACCESS_KEY: demo
+      AWS_DEFAULT_REGION: us-east-1
+    command:
+      - python
+      - -c
+      - |
+        import time, boto3
+        client = boto3.client("s3", endpoint_url="http://s3:5000")
+        for attempt in range(30):
+            try:
+                client.create_bucket(Bucket="bingarde")
+                break
+            except client.exceptions.BucketAlreadyOwnedByYou:
+                break
+            except Exception:
+                time.sleep(1)
+        else:
+            raise SystemExit("the S3 store did not start")
+
+  web:
+    depends_on:
+      s3-init:
+        condition: service_completed_successfully
+    environment:
+      STORAGE: s3
+      S3_BUCKET: bingarde
+      S3_ENDPOINT: http://s3:5000
+      S3_PUBLIC_ENDPOINT: http://localhost:${BINGARDE_S3_PORT:-9000}
+      # moto accepts any credentials; a real store needs real ones.
+      AWS_ACCESS_KEY_ID: demo
+      AWS_SECRET_ACCESS_KEY: demo
+      AWS_DEFAULT_REGION: us-east-1

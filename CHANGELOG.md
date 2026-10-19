@@ -6,6 +6,10 @@ How to keep it: [docs/versioning.md](docs/versioning.md).
 
 ## Unreleased
 
+## 1.1.0 - 2026-10-18
+
+Files in S3.
+
 ### Added
 
 - Build files can be kept in an S3 bucket (AWS or S3-compatible) instead of the local disk:

@@ -100,7 +100,8 @@ python3 scripts/bingarde-upload.py \
 ```
 
 Add `--status failed` to keep the logs of a broken build, or `--role` to set the role of all
-files. The same steps with plain `curl`:
+files. Ready-made steps for GitHub Actions, GitLab CI and Jenkins are in
+[docs/ci.md](docs/ci.md). The same steps with plain `curl`:
 
 ```bash
 API=https://bingarde.example.com/api/v2

@@ -41,13 +41,28 @@ The demo data in the screenshots is real: a small C project built with MSVC (Win
 gcc (Linux x86_64 and aarch64) and Xcode (iOS, macOS). Its sources and build scripts
 live in a separate repo, linked here as the [`demo/`](demo/) submodule.
 
+## Why Bingarde
+
+- **Artifactory, Nexus.** Package repositories first: Maven, npm, Docker images. They are
+  big Java servers, and much of what makes them useful for binaries is in the paid editions.
+  Bingarde is one small Python app with PostgreSQL, made only for build outputs.
+- **CI artifacts (GitHub Actions, GitLab, Jenkins).** Kept per pipeline run and usually
+  deleted after some days or weeks. You cannot filter builds of several projects by branch,
+  platform and status in one list, or get an e-mail when a matching build appears.
+- **A bare S3 bucket or file share.** Holds the files, but not what they are: no build
+  number, commit, platform or status, no search, no per-build page, no access check.
+
+Bingarde fits a team that builds one product for many platforms and configs and needs
+the installers, debug symbols and logs of each build kept together and easy to find.
+It does not store packages for package managers, and it has no retention rules yet.
+
 ## Quick start
 
 You need Docker with `docker compose`.
 
 ```bash
-git clone --recurse-submodules <this repo's URL>
-cd bingarde
+git clone --recurse-submodules https://github.com/vasiliok/Bingarde.git
+cd Bingarde
 docker compose --profile run up --build -d
 ```
 

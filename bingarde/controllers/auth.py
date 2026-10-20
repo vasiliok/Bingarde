@@ -70,24 +70,27 @@ def login_csrf_ok(sent):
     return isinstance(expected, str) and isinstance(sent, str) and secrets.compare_digest(expected, sent)
 
 
-def find_or_create_user(email, name="", google_sub=None):
-    """Match by Google id first, then by e-mail (links a DEV_LOGIN user to Google).
+def find_or_create_user(email, name="", issuer=None, sub=None):
+    """Match by sign-in account (issuer + sub) first, then by e-mail (links a
+    DEV_LOGIN user to the account).
 
-    A user already linked to a Google account is never handed to a different
-    one with the same e-mail: raises GoogleLoginError("linked")."""
+    A user already linked to an account is never handed to a different one
+    with the same e-mail: raises GoogleLoginError("linked")."""
     user = None
-    if google_sub:
-        user = DBSession.scalar(select(User).where(User.google_sub == google_sub))
+    account = (issuer, sub) if issuer and sub else None
+    if account:
+        user = DBSession.scalar(select(User).where(User.oidc_issuer == issuer,
+                                                   User.oidc_sub == sub))
     if user is None:
         user = DBSession.scalar(select(User).where(func.lower(User.email) == email.lower()))
-        if user is not None and google_sub and user.google_sub not in (None, google_sub):
+        if user is not None and account and user.oidc_sub is not None:
             raise google_login.GoogleLoginError(
-                "linked", "%s is already linked to another Google account" % email)
+                "linked", "%s is already linked to another account" % email)
     if user is None:
         user = User(email=email.lower(), name=name or email, is_active=True)
         DBSession.add(user)
-    if google_sub and not user.google_sub:
-        user.google_sub = google_sub
+    if account and user.oidc_sub is None:
+        user.oidc_issuer, user.oidc_sub = account
     if name:
         user.name = name
     DBSession.flush()
@@ -109,7 +112,8 @@ class GoogleController(TGController):
     def callback(self, **params):
         try:
             claims, came_from = google_login.finish_login(params)
-            user = find_or_create_user(claims["email"], claims.get("name", ""), claims["sub"])
+            user = find_or_create_user(claims["email"], claims.get("name", ""),
+                                      google_login.ISSUERS[0], claims["sub"])
         except google_login.GoogleLoginError as exc:
             log.warning("Google login failed: %s", exc)
             return failed(exc.code)

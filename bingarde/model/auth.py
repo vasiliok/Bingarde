@@ -1,8 +1,9 @@
-"""Users (from Google login) and their personal API tokens for CI."""
+"""Users (from OpenID Connect login) and their personal API tokens for CI."""
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, String, func
+from sqlalchemy import (Boolean, CheckConstraint, DateTime, ForeignKey, String,
+                        UniqueConstraint, func)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bingarde.model import Base
@@ -10,12 +11,18 @@ from bingarde.model import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("oidc_issuer", "oidc_sub"),
+        CheckConstraint("(oidc_issuer IS NULL) = (oidc_sub IS NULL)", name="oidc_account"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True)
     name: Mapped[str] = mapped_column(String(200), default="")
-    # Google's stable account id ("sub" claim). Empty for DEV_LOGIN users.
-    google_sub: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
+    # The sign-in account: the provider's issuer URL and its stable account id
+    # ("sub" claim), unique together. Both empty for DEV_LOGIN users.
+    oidc_issuer: Mapped[Optional[str]] = mapped_column(String(255))
+    oidc_sub: Mapped[Optional[str]] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now())

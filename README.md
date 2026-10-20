@@ -155,7 +155,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-321 pytest tests against PostgreSQL and an S3 test store (moto).
+327 pytest tests against PostgreSQL and an S3 test store (moto).
 
 ## Tech stack
 

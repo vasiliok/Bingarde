@@ -55,7 +55,8 @@ def test_successful_login_creates_user_and_session(wsgi_app, db, anon, fake_goog
     resp = browser.get("/login/google/callback", {"state": state, "code": "the-code"}, status=302)
     assert resp.location.endswith("/tokens")
     user = db.query(User).one()
-    assert (user.email, user.google_sub, user.name) == ("pat@example.com", "google-123", "Pat")
+    assert (user.email, user.oidc_issuer, user.oidc_sub, user.name) == (
+        "pat@example.com", "https://accounts.google.com", "google-123", "Pat")
     browser.get("/tokens", status=200)
 
 
@@ -73,7 +74,7 @@ def test_google_login_links_an_existing_dev_user(wsgi_app, db, anon, fake_google
     browser = client(wsgi_app)
     state = start(browser, fake_google)
     browser.get("/login/google/callback", {"state": state, "code": "the-code"}, status=302)
-    assert db.query(User).one().google_sub == "google-123"
+    assert db.query(User).one().oidc_sub == "google-123"
 
 
 def failed_login(wsgi_app, fake_google, params=None, answer=None):
@@ -158,7 +159,7 @@ def test_another_google_account_with_the_same_email_is_refused(wsgi_app, db, ano
     browser, resp = google_login(wsgi_app, fake_google, sub="google-B")
     assert resp.location.endswith("/login?error=linked")
     browser.get("/tokens", status=302)
-    assert [(u.email, u.google_sub) for u in db.query(User)] == [("pat@example.com", "google-A")]
+    assert [(u.email, u.oidc_sub) for u in db.query(User)] == [("pat@example.com", "google-A")]
 
 
 def test_workspace_account_of_an_allowed_domain_signs_in(wsgi_app, anon, fake_google, monkeypatch):

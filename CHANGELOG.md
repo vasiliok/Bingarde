@@ -6,6 +6,10 @@ How to keep it: [docs/versioning.md](docs/versioning.md).
 
 ## Unreleased
 
+## 1.2.0 - 2026-10-20
+
+Sign-in with any OpenID Connect provider.
+
 ### Added
 
 - Sign-in with any OpenID Connect provider (Keycloak, Authentik, GitLab, ...), not only
@@ -14,6 +18,7 @@ How to keep it: [docs/versioning.md](docs/versioning.md).
   [docs/login.md](docs/login.md).
 - When the provider is changed, users are linked to the new one on their first sign-in,
   by e-mail.
+- CI examples for GitHub Actions, GitLab CI and Jenkins in [docs/ci.md](docs/ci.md).
 
 ### Changed
 
@@ -21,6 +26,8 @@ How to keep it: [docs/versioning.md](docs/versioning.md).
   `/login/google` addresses keep working too. The sign-in cookie is now `bg_oidc_login`, so
   a sign-in started before the upgrade must be started again.
 - Error messages on the login page no longer name Google.
+- Users keep their sign-in account as issuer and subject instead of a Google id; the
+  database migration runs when the app starts and marks existing accounts as Google ones.
 
 ## 1.1.0 - 2026-10-18
 

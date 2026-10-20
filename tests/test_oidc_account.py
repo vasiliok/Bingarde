@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from bingarde.controllers.auth import find_or_create_user
-from bingarde.lib.google import GoogleLoginError
+from bingarde.lib.oidc import LoginError
 from bingarde.model import DBSession, User
 from tests.conftest import HERE
 
@@ -76,9 +76,17 @@ def test_dev_login_user_is_linked_on_first_sign_in(session):
     assert linked.id == dev.id and (linked.oidc_issuer, linked.oidc_sub) == (KEYCLOAK, "kc-9")
 
 
-def test_linked_user_is_not_taken_over_by_another_provider(session):
+def test_linked_user_is_not_taken_over_by_another_account(session):
     find_or_create_user("pat@example.com", "Pat", GOOGLE, "google-1")
-    with pytest.raises(GoogleLoginError) as err:
-        find_or_create_user("pat@example.com", "Pat", KEYCLOAK, "kc-1")
+    with pytest.raises(LoginError) as err:
+        find_or_create_user("pat@example.com", "Pat", GOOGLE, "google-2")
     assert err.value.code == "linked"
     assert [(u.oidc_issuer, u.oidc_sub) for u in session.query(User)] == [(GOOGLE, "google-1")]
+
+
+def test_user_moves_to_a_new_provider(session):
+    old = find_or_create_user("pat@example.com", "Pat", GOOGLE, "google-1")
+    moved = find_or_create_user("pat@example.com", "", KEYCLOAK, "kc-1")
+    assert moved.id == old.id
+    assert [(u.oidc_issuer, u.oidc_sub) for u in session.query(User)] == [(KEYCLOAK, "kc-1")]
+    assert find_or_create_user("pat@example.com", "", KEYCLOAK, "kc-1").id == old.id

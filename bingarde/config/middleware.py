@@ -31,6 +31,11 @@ ENV_OVERRIDES = {
     "WRITER_EMAILS": "writer_emails",
     "WRITER_DOMAINS": "writer_domains",
     "DEV_LOGIN": "dev_login",
+    "OIDC_ISSUER": "oidc_issuer",
+    "OIDC_CLIENT_ID": "oidc_client_id",
+    "OIDC_CLIENT_SECRET": "oidc_client_secret",
+    "OIDC_NAME": "oidc_name",
+    "OIDC_SCOPES": "oidc_scopes",
     "GOOGLE_CLIENT_ID": "google_client_id",
     "GOOGLE_CLIENT_SECRET": "google_client_secret",
     "XACCEL": "xaccel",
@@ -68,9 +73,10 @@ def _enabled(value):
 
 
 def check_settings(app_conf):
-    """Refuse the demo secret outside the demo or a broken storage setting, and warn
-    about open settings."""
+    """Refuse the demo secret outside the demo or a broken storage or sign-in setting,
+    and warn about open settings."""
     storage.check_settings(app_conf)
+    check_oidc_settings(app_conf)
     dev_login = _enabled(app_conf.get("dev_login"))
     if app_conf["session.secret"] == DEMO_SESSION_SECRET and not dev_login:
         raise RuntimeError("SESSION_SECRET is the demo value from docker-compose.yml; "
@@ -78,9 +84,26 @@ def check_settings(app_conf):
     if dev_login:
         log.warning("DEV_LOGIN is on: anyone who can open this site can sign in with any "
                     "e-mail, admins included. Use it only on your own machine.")
-    if app_conf.get("google_client_id") and not str(app_conf.get("allowed_email_domains") or "").strip():
-        log.warning("ALLOWED_EMAIL_DOMAINS is empty: any Google account can sign in and read "
-                    "all builds")
+    if ((app_conf.get("oidc_client_id") or app_conf.get("google_client_id"))
+            and not str(app_conf.get("allowed_email_domains") or "").strip()):
+        log.warning("ALLOWED_EMAIL_DOMAINS is empty: any account of the sign-in provider can "
+                    "sign in and read all builds")
     domains = {d.strip() for d in str(app_conf.get("writer_domains") or "").split(",")}
     if "*" in domains and not dev_login:
         log.warning("WRITER_DOMAINS is '*': every signed-in user can create and change builds")
+
+
+def check_oidc_settings(app_conf):
+    """OIDC_CLIENT_ID needs OIDC_ISSUER and OIDC_CLIENT_SECRET; the issuer must be https."""
+    if not app_conf.get("oidc_client_id"):
+        return
+    issuer = str(app_conf.get("oidc_issuer") or "").strip()
+    if not issuer:
+        raise RuntimeError("OIDC_CLIENT_ID is set but OIDC_ISSUER is not")
+    if not app_conf.get("oidc_client_secret"):
+        raise RuntimeError("OIDC_CLIENT_ID is set but OIDC_CLIENT_SECRET is not")
+    local = issuer.startswith(("http://localhost", "http://127.0.0.1"))
+    if not issuer.startswith("https://") and not local:
+        raise RuntimeError("OIDC_ISSUER must be an https:// URL, got %r" % issuer)
+    if app_conf.get("google_client_id"):
+        log.warning("OIDC_CLIENT_ID and GOOGLE_CLIENT_ID are both set; OIDC_* is used")

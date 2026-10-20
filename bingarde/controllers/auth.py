@@ -1,7 +1,10 @@
-"""Login pages: /login, /login/google, /login/google/callback, /login/dev, /logout.
+"""Login pages: /login, /login/oidc, /login/oidc/callback, /login/dev, /logout.
+
+/login/google and /login/google/callback are the same pages under their older
+names, so a redirect address registered with Google keeps working.
 
 Nothing here creates a server-side session before someone is signed in: the
-login form's CSRF token and Google's sign-in state are kept in short signed
+login form's CSRF token and the provider's sign-in state are kept in short signed
 cookies (lib/cookies.py). Errors are passed to /login as a code, and the page
 shows a fixed message for it, so a link cannot put its own text on the page.
 """
@@ -12,7 +15,7 @@ from sqlalchemy import func, select
 from tg import TGController, abort, expose, request, response, url
 
 from bingarde.lib import cookies, identity
-from bingarde.lib import google as google_login
+from bingarde.lib import oidc
 from bingarde.model import DBSession, User
 
 log = logging.getLogger(__name__)
@@ -24,13 +27,13 @@ LOGIN_ERRORS = {
     "bad_email": "Enter an e-mail address.",
     "not_allowed": "This account is not allowed to sign in here.",
     "disabled": "This account is disabled.",
-    "not_configured": "Google sign-in is not configured.",
+    "not_configured": "Single sign-on is not configured.",
     "expired": "The sign-in took too long. Please try again.",
-    "cancelled": "Google sign-in was cancelled.",
-    "unverified": "The Google account has no verified e-mail address.",
+    "cancelled": "The sign-in was cancelled.",
+    "unverified": "The account has no verified e-mail address.",
     "workspace": "Sign in with your organization's Google Workspace account.",
-    "linked": "This e-mail address is already linked to another Google account.",
-    "google": "Google sign-in failed. Please try again.",
+    "linked": "This e-mail address is already linked to another account.",
+    "provider": "Sign-in failed. Please try again.",
 }
 UNKNOWN_ERROR = "Sign-in failed. Please try again."
 
@@ -74,8 +77,10 @@ def find_or_create_user(email, name="", issuer=None, sub=None):
     """Match by sign-in account (issuer + sub) first, then by e-mail (links a
     DEV_LOGIN user to the account).
 
-    A user already linked to an account is never handed to a different one
-    with the same e-mail: raises GoogleLoginError("linked")."""
+    A user linked to an account is never handed to another account of the same
+    provider with the same e-mail: raises LoginError("linked"). A user linked
+    to another provider is linked to this one: only one provider is set up at
+    a time, so that is how users move when the provider is changed."""
     user = None
     account = (issuer, sub) if issuer and sub else None
     if account:
@@ -83,9 +88,12 @@ def find_or_create_user(email, name="", issuer=None, sub=None):
                                                    User.oidc_sub == sub))
     if user is None:
         user = DBSession.scalar(select(User).where(func.lower(User.email) == email.lower()))
-        if user is not None and account and user.oidc_sub is not None:
-            raise google_login.GoogleLoginError(
+        if user is not None and account and user.oidc_issuer == issuer:
+            raise oidc.LoginError(
                 "linked", "%s is already linked to another account" % email)
+        if user is not None and account and user.oidc_issuer is not None:
+            log.info("%s moves from %s to %s", email, user.oidc_issuer, issuer)
+            user.oidc_issuer = user.oidc_sub = None
     if user is None:
         user = User(email=email.lower(), name=name or email, is_active=True)
         DBSession.add(user)
@@ -97,25 +105,25 @@ def find_or_create_user(email, name="", issuer=None, sub=None):
     return user
 
 
-class GoogleController(TGController):
-    """/login/google starts the flow, /login/google/callback finishes it."""
+class OidcController(TGController):
+    """/login/oidc starts the flow, /login/oidc/callback finishes it."""
 
     @expose()
     def index(self, came_from="/", **kw):
         try:
-            return go(google_login.start_login(safe_came_from(came_from)))
-        except google_login.GoogleLoginError as exc:
-            log.warning("Google login failed: %s", exc)
+            return go(oidc.start_login(safe_came_from(came_from)))
+        except oidc.LoginError as exc:
+            log.warning("Login failed: %s", exc)
             return failed(exc.code)
 
     @expose()
     def callback(self, **params):
         try:
-            claims, came_from = google_login.finish_login(params)
+            issuer, claims, came_from = oidc.finish_login(params)
             user = find_or_create_user(claims["email"], claims.get("name", ""),
-                                      google_login.ISSUERS[0], claims["sub"])
-        except google_login.GoogleLoginError as exc:
-            log.warning("Google login failed: %s", exc)
+                                       issuer, claims["sub"])
+        except oidc.LoginError as exc:
+            log.warning("Login failed: %s", exc)
             return failed(exc.code)
         if not user.is_active:
             return failed("disabled")
@@ -124,13 +132,14 @@ class GoogleController(TGController):
 
 
 class LoginController(TGController):
-    google = GoogleController()
+    oidc = OidcController()
+    google = oidc
 
     @expose("jinja:bingarde.templates.login")
     def index(self, came_from="/", error=None, **kw):
         return dict(came_from=safe_came_from(came_from),
                     error=LOGIN_ERRORS.get(error, UNKNOWN_ERROR) if error else None,
-                    google_enabled=google_login.configured(),
+                    provider=oidc.settings(),
                     dev_login=identity.dev_login_enabled(),
                     csrf_token=login_csrf_token(), hide_nav=True)
 

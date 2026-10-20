@@ -1,7 +1,7 @@
 """Short-lived signed cookies for the sign-in steps.
 
-The login page and Google sign-in run before anyone is signed in. Keeping
-their state (the login form's CSRF token, Google's state/nonce/PKCE values)
+The login page and the provider's sign-in run before anyone is signed in. Keeping
+their state (the login form's CSRF token, the sign-in's state/nonce/PKCE values)
 in a server-side session would create a session file for every anonymous
 visit, so it lives in a cookie instead. The cookie is signed with
 SESSION_SECRET (HMAC-SHA256), so a client cannot make one up, and it

@@ -11,8 +11,8 @@ test reports. CI jobs upload each build through a small REST API, with its proje
 platform, config, architecture, commit and status. People browse the builds in a web UI,
 filter them with a condition builder of AND/OR groups, save filters as presets, and get an
 e-mail when a new build matches. Files can be downloaded one at a time or as a whole build in
-one zip, and nginx serves them after the app checks access. People sign in with Google, and
-CI jobs use scoped API tokens.
+one zip, and nginx serves them after the app checks access. People sign in with Google,
+Keycloak, GitLab or another OpenID Connect provider, and CI jobs use scoped API tokens.
 
 ![Builds filtered with two condition groups](docs/screenshots/condition-builder.png)
 
@@ -30,8 +30,9 @@ CI jobs use scoped API tokens.
 - **Local disk or S3.** Files stay in a folder or go to an S3 bucket (AWS or any
   S3-compatible store), chosen with one setting. S3 downloads go straight from the bucket
   through short-lived signed links. See [docs/storage.md](docs/storage.md).
-- **Login.** Google sign-in (OpenID Connect with PKCE) for people, scoped API tokens
-  (`read` / `write`) for CI. Only token hashes are stored. Forms are CSRF-protected.
+- **Login.** Single sign-on with any OpenID Connect provider (Google, Keycloak, Authentik,
+  GitLab, ...) for people, scoped API tokens (`read` / `write`) for CI. Only token hashes
+  are stored. Forms are CSRF-protected. See [docs/login.md](docs/login.md).
 
 | Build page | Failed build |
 |---|---|
@@ -135,7 +136,8 @@ Set with environment variables (see `docker-compose.yml`):
 | `DATABASE_URL` | PostgreSQL URL (`postgresql+psycopg://…`) |
 | `SESSION_SECRET` | Long random string for session cookies |
 | `BASE_URL` | Public URL of the site |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_NAME` | Sign-in provider, see [docs/login.md](docs/login.md) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in without the `OIDC_*` settings |
 | `ALLOWED_EMAIL_DOMAINS`, `ADMIN_EMAILS` | Who may sign in, who is admin |
 | `BLOCKED_EMAILS` | Users who lose access at once, sessions and tokens included |
 | `WRITER_EMAILS`, `WRITER_DOMAINS` | Who may create builds and write tokens (`*` = everyone); others only read |
@@ -155,7 +157,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-327 pytest tests against PostgreSQL and an S3 test store (moto).
+345 pytest tests against PostgreSQL and an S3 test store (moto).
 
 ## Tech stack
 
@@ -164,7 +166,7 @@ docker compose --profile test up --build --abort-on-container-exit
 - **Database:** PostgreSQL 16 (psycopg 3)
 - **Web server:** nginx 1.27 (reverse proxy, static files, `X-Accel-Redirect` downloads,
   streamed uploads)
-- **Auth:** Google OpenID Connect with PKCE (Authlib, joserfc), hashed API tokens,
+- **Auth:** OpenID Connect with PKCE and discovery (Authlib, joserfc), hashed API tokens,
   CSRF-protected sessions (Beaker)
 - **Frontend:** Bootstrap 5.3, Bootstrap Icons, plain JavaScript, with jQuery 3.7 for the
   condition builder

@@ -146,5 +146,5 @@ def test_open_settings_are_logged(caplog, monkeypatch):
     monkeypatch.setattr(middleware.log, "disabled", False)
     check_settings({"session.secret": "s" * 40, "google_client_id": "id",
                     "allowed_email_domains": "", "writer_domains": "*"})
-    assert "any Google account can sign in" in caplog.text
+    assert "any account of the sign-in provider can sign in" in caplog.text
     assert "every signed-in user can create and change builds" in caplog.text

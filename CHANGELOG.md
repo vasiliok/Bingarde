@@ -6,6 +6,22 @@ How to keep it: [docs/versioning.md](docs/versioning.md).
 
 ## Unreleased
 
+### Added
+
+- Sign-in with any OpenID Connect provider (Keycloak, Authentik, GitLab, ...), not only
+  Google: set `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and `OIDC_NAME`; the
+  endpoints and keys come from the provider's discovery document. See
+  [docs/login.md](docs/login.md).
+- When the provider is changed, users are linked to the new one on their first sign-in,
+  by e-mail.
+
+### Changed
+
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` keep working and mean Google; the
+  `/login/google` addresses keep working too. The sign-in cookie is now `bg_oidc_login`, so
+  a sign-in started before the upgrade must be started again.
+- Error messages on the login page no longer name Google.
+
 ## 1.1.0 - 2026-10-18
 
 Files in S3.

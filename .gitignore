@@ -5,3 +5,6 @@ env
 .DS_Store
 store
 .claude/
+# Local deployment settings (AI-QUICKSTART.md)
+.env
+docker-compose.override.yml

@@ -67,6 +67,8 @@ cd Bingarde
 docker compose --profile run --profile demo up --build -d
 ```
 
+Setting it up with an AI assistant? Point it at [AI-QUICKSTART.md](AI-QUICKSTART.md).
+
 Already cloned without `--recurse-submodules`? Run `git submodule update --init` to get `demo/`.
 
 Open <http://localhost:8080> and sign in with any e-mail. The `demo` profile loads 75 demo

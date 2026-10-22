@@ -12,6 +12,9 @@
 #   (largest upload nginx accepts, default 20g), BINGARDE_BIND=0.0.0.0
 #   (listen on all interfaces, not just localhost).
 #
+#   The same app loaded with the demo builds (demo/demo-builds.zip, once):
+#     docker compose --profile run --profile demo up --build -d
+#
 #   The same app with files in S3 instead of the "store" volume: add the
 #   docker-compose.s3.yml file, see there.
 #
@@ -112,6 +115,22 @@ services:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - static:/var/www/static:ro
       - store:/var/www/store:ro
+
+  # ---- DEMO: load the demo builds once, then exit -----------------------
+  # Only with DEV_LOGIN (the demo setup), and only into a server with no
+  # builds yet. Uses a write token of admin@example.org that it deletes again.
+  demo-seed:
+    build: .
+    profiles: ["demo"]
+    depends_on:
+      - web
+    environment:
+      DATABASE_URL: postgresql+psycopg://bingarde:${POSTGRES_PASSWORD:-bingarde}@db/bingarde
+      DEV_LOGIN: "1"
+      BINGARDE_URL: http://web:8000
+    volumes:
+      - ./demo:/demo:ro
+    command: python -m bingarde.lib.demo_seed /demo/seed.py /demo/demo-builds.zip
 
 volumes:
   pgdata:

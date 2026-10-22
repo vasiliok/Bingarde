@@ -6,6 +6,11 @@ How to keep it: [docs/versioning.md](docs/versioning.md).
 
 ## Unreleased
 
+### Added
+
+- The `demo` compose profile loads the demo builds on the first start, so the demo is one
+  command: `docker compose --profile run --profile demo up --build -d`.
+
 ## 1.2.0 - 2026-10-20
 
 Sign-in with any OpenID Connect provider.

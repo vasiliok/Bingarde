@@ -64,25 +64,25 @@ You need Docker with `docker compose`.
 ```bash
 git clone --recurse-submodules https://github.com/vasiliok/Bingarde.git
 cd Bingarde
-docker compose --profile run up --build -d
+docker compose --profile run --profile demo up --build -d
 ```
 
 Already cloned without `--recurse-submodules`? Run `git submodule update --init` to get `demo/`.
 
-Open <http://localhost:8080> and sign in with any e-mail. The demo setup uses a
-developer login, `admin@example.org` is an admin, and every user may write. The demo
-listens on localhost only. For a real deployment turn `DEV_LOGIN` off, set your own
-`SESSION_SECRET` (the app refuses the demo one), and list the writers.
+Open <http://localhost:8080> and sign in with any e-mail. The `demo` profile loads 75 demo
+builds (`demo/demo-builds.zip`) on the first start, which takes a minute; leave it out to
+start empty. The demo setup uses a developer login, `admin@example.org` is an admin, and
+every user may write. The demo listens on localhost only. For a real deployment turn
+`DEV_LOGIN` off, set your own `SESSION_SECRET` (the app refuses the demo one), and list the
+writers.
 
-Load the demo builds (create a `write` token on the **API tokens** page first).
-`--from` says where the build files come from: a folder, a `.zip` file, or the URL of a `.zip`,
-for example one attached to a release of the demo repo.
+To load builds by hand, create a `write` token on the **API tokens** page and run
+`demo/seed.py`. `--from` is a folder, a `.zip` file, or the URL of a `.zip`.
 
 ```bash
 export BINGARDE_TOKEN=bg_...
 python3 demo/seed.py --from demo/out                         # folder made by demo/build-all.sh
 python3 demo/seed.py --from ~/Downloads/demo-builds.zip      # local zip
-python3 demo/seed.py --from https://example.com/demo-builds.zip
 ```
 
 ## Upload from CI
@@ -157,7 +157,7 @@ Set with environment variables (see `docker-compose.yml`):
 docker compose --profile test up --build --abort-on-container-exit
 ```
 
-345 pytest tests against PostgreSQL and an S3 test store (moto).
+349 pytest tests against PostgreSQL and an S3 test store (moto).
 
 ## Tech stack
 

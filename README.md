@@ -13,7 +13,8 @@ filter them with a condition builder of AND/OR groups, save filters as presets, 
 e-mail when a new build matches. Files can be downloaded one at a time or as a whole build in
 one zip, and nginx serves them after the app checks access. People sign in with Google,
 Keycloak, GitLab or another OpenID Connect provider, groups decide who sees which builds, and
-CI jobs use scoped API tokens.
+CI jobs use scoped API tokens. Chosen builds, such as releases, can be public: anyone can
+download them without an account.
 
 ![Builds filtered with two condition groups](docs/screenshots/condition-builder.png)
 
@@ -25,7 +26,7 @@ CI jobs use scoped API tokens.
   and a SHA-256. Uploading the same file twice keeps one copy.
 - **Condition builder.** Filter builds with any number of AND/OR groups on project, branch,
   platform, config, arch, build number, revision, status and date. Save filters as presets.
-- **Fast, protected downloads.** The app checks the login, then nginx sends the file
+- **Fast, protected downloads.** The app checks who may have the file, then nginx sends it
   (`X-Accel-Redirect`). Big uploads stream to disk without buffering. Download a whole
   build as one zip.
 - **Local disk or S3.** Files stay in a folder or go to an S3 bucket (AWS or any
@@ -37,7 +38,12 @@ CI jobs use scoped API tokens.
 - **Groups and access.** Rules made with the build list's filter decide who sees and who may
   write which builds: the team gets nightlies, customers only release branches. New users join
   groups at their first sign-in, so nobody has to add them; a tested build is promoted to a
-  release branch with one click. See [docs/access.md](docs/access.md).
+  release branch with one click. Admins manage users and groups under **Site settings**.
+  See [docs/access.md](docs/access.md).
+- **Public downloads.** The built-in **Public** group opens chosen builds, e.g. every
+  release, to visitors without an account: another site can link straight to the files.
+  Signed-in users see more. Nothing is public until an admin adds a rule. See
+  [docs/access.md](docs/access.md#public-downloads).
 
 | Build page | Failed build |
 |---|---|

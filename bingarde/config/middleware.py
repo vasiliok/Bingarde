@@ -25,11 +25,7 @@ ENV_OVERRIDES = {
     "SMTP_USER": "smtp_user",
     "SMTP_PASSWORD": "smtp_password",
     "SMTP_STARTTLS": "smtp_starttls",
-    "ADMIN_EMAILS": "admin_emails",
     "ALLOWED_EMAIL_DOMAINS": "allowed_email_domains",
-    "BLOCKED_EMAILS": "blocked_emails",
-    "WRITER_EMAILS": "writer_emails",
-    "WRITER_DOMAINS": "writer_domains",
     "DEV_LOGIN": "dev_login",
     "OIDC_ISSUER": "oidc_issuer",
     "OIDC_CLIENT_ID": "oidc_client_id",
@@ -48,6 +44,11 @@ ENV_OVERRIDES = {
     "S3_URL_TTL": "s3_url_ttl",
     "MAX_REQUEST_BODY": "max_request_body",
 }
+
+# Settings that groups replaced (docs/access.md). The database upgrade moved their
+# values into groups once; now they are ignored.
+REPLACED_SETTINGS = {"ADMIN_EMAILS": "admin_emails", "WRITER_EMAILS": "writer_emails",
+                     "WRITER_DOMAINS": "writer_domains", "BLOCKED_EMAILS": "blocked_emails"}
 
 
 def make_app(global_conf, **app_conf):
@@ -87,10 +88,11 @@ def check_settings(app_conf):
     if ((app_conf.get("oidc_client_id") or app_conf.get("google_client_id"))
             and not str(app_conf.get("allowed_email_domains") or "").strip()):
         log.warning("ALLOWED_EMAIL_DOMAINS is empty: any account of the sign-in provider can "
-                    "sign in and read all builds")
-    domains = {d.strip() for d in str(app_conf.get("writer_domains") or "").split(",")}
-    if "*" in domains and not dev_login:
-        log.warning("WRITER_DOMAINS is '*': every signed-in user can create and change builds")
+                    "sign in and join the groups that new users join")
+    for env_name, key in REPLACED_SETTINGS.items():
+        if os.environ.get(env_name) or str(app_conf.get(key) or "").strip():
+            log.warning("%s is no longer used: admins, writers and disabled users are managed "
+                        "on the Users and Groups pages (docs/access.md)", env_name)
 
 
 def check_oidc_settings(app_conf):

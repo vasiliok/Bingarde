@@ -1,0 +1,22 @@
+{% extends "bingarde.templates.base" %}
+
+{# Site settings: admins only. A side menu, and each page's content in "settings". #}
+{% block content %}
+<div class="container-fluid px-4 pb-4" style="max-width: 1400px;">
+    <div class="row g-4">
+        <aside class="col-lg-3 col-xl-2">
+            <div class="card page-card">
+                <div class="card-header bg-body fw-semibold"><i class="bi bi-gear me-1"></i>Site settings</div>
+                <nav class="list-group list-group-flush" id="id-settings-menu" aria-label="Site settings">
+                    <a class="list-group-item list-group-item-action{% if current_page == 'settings' %} active{% endif %}" href="/admin"><i class="bi bi-grid me-2"></i>Overview</a>
+                    <a class="list-group-item list-group-item-action{% if current_page == 'users' %} active{% endif %}" href="/admin/users"><i class="bi bi-person me-2"></i>Users</a>
+                    <a class="list-group-item list-group-item-action{% if current_page == 'groups' %} active{% endif %}" href="/admin/groups"><i class="bi bi-people me-2"></i>Groups</a>
+                </nav>
+            </div>
+        </aside>
+        <main class="col-lg-9 col-xl-10">
+            {% block settings %}{% endblock %}
+        </main>
+    </div>
+</div>
+{% endblock %}

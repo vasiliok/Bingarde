@@ -1,15 +1,16 @@
 """/tokens: personal API tokens for CI machines.
 
 Users see and revoke their own tokens; admins see and revoke everyone's.
-A new token is shown exactly once, right after it is created. Only writers
-(see lib/identity.py) can create "write" tokens.
+A new token is shown exactly once, right after it is created. Only users with
+a write rule (or admins) can create "write" tokens. The page also shows the
+user's own access rules (lib/access.py), without naming their groups.
 """
 import datetime
 
 from sqlalchemy import select
 from tg import TGController, abort, expose, redirect
 
-from bingarde.lib import identity
+from bingarde.lib import access, identity, usermgmt
 from bingarde.model import ApiToken, DBSession, get_row
 
 # Lifetimes offered when creating a token, in days ("" = never expires).
@@ -25,6 +26,7 @@ class TokensController(TGController):
             query = query.where(ApiToken.user_id == ident.user.id)
         return dict(user=ident.user, is_admin=ident.is_admin,
                     can_write=identity.can_write(ident.user),
+                    my_rules=usermgmt.rules_dicts(access.distinct_rules(ident.user)),
                     tokens=DBSession.scalars(query).all(),
                     new_token=new_token, error=error,
                     lifetimes=LIFETIMES, default_lifetime=DEFAULT_LIFETIME,
@@ -42,8 +44,8 @@ class TokensController(TGController):
         if not name or scope not in ("read", "write"):
             return self._page(ident, error="give the token a name and pick read or write")
         if scope == "write" and not identity.can_write(ident.user):
-            return self._page(ident, error="your account has read-only access, so it can only "
-                                           "create read tokens")
+            return self._page(ident, error="your account may not write any builds, so it can "
+                                           "only create read tokens")
         if days not in dict(LIFETIMES):
             return self._page(ident, error="pick how long the token is valid")
         _, token = identity.create_token(ident.user, name, scope, int(days) if days else None)

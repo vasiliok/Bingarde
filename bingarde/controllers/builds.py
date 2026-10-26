@@ -6,10 +6,12 @@
   /builds/filter/op               list / rename / delete / toggle-notify presets (AJAX)
   /builds/delete                  delete the ticked builds (admins only)
   /builds/<id>                    one build with its files and VCS history
+  /builds/<id>/promote            move the build to another branch (POST)
   /builds/values/<field>          stored values of a filter field (for its input)
 
-Every page needs a browser login. AJAX POSTs need the CSRF header
-(X-CSRF-Token, from the page's csrf-token meta tag).
+Every page needs a browser login, and shows only the builds the user's groups
+may read (lib/access.py). AJAX POSTs need the CSRF header (X-CSRF-Token, from
+the page's csrf-token meta tag).
 
 Filters are JSON trees (see lib/filters.py): /builds/filter?q=<tree>, and
 saved presets keep {"filter": <tree>, "sort": {"field": ..., "order": ...}}.
@@ -17,17 +19,26 @@ saved presets keep {"filter": <tree>, "sort": {"field": ..., "order": ...}}.
 import json
 import logging
 
-from sqlalchemy import Integer, String, asc, cast, desc, func, or_, select, true
+import transaction
+from sqlalchemy import Integer, String, and_, asc, cast, desc, func, or_, select, true
 from tg import TGController, abort, expose, redirect, request, session
 from webob import Response
 
-from bingarde.lib import filters, identity, storage
+from bingarde.lib import access, filters, identity, storage
+from bingarde.controllers.api import promote
+from bingarde.lib.api import ApiError
 from bingarde.lib.paging import Paging
-from bingarde.model import DBSession, FilterPreset, Build, db_int, get_row
+from bingarde.model import DBSession, FilterPreset, Build, User, db_int, get_row
 
 log = logging.getLogger(__name__)
 
 PER_PAGE = 10
+# /builds/<id>?error=<code> after a failed promotion.
+PROMOTE_ERRORS = {
+    "forbidden": "You may not write builds of the current or the target branch.",
+    "conflict": "That branch already has this build.",
+    "invalid": "Enter a branch name (at most 255 characters).",
+}
 # Columns the list can be sorted by (URL name -> column).
 SORT_COLUMNS = {
     "id": Build.id, "project": Build.project, "branch": Build.branch,
@@ -95,17 +106,58 @@ class BuildPage(TGController):
     def __init__(self, build_id):
         self.build_id = build_id
 
-    @expose("jinja:bingarde.templates.build_detail")
-    def index(self, **kw):
-        identity.page_identity()
+    def _build(self, ident):
         build = get_row(Build, self.build_id)
-        if build is None:
+        if build is None or not access.can_see(ident.user, build):
             abort(404, "Build %s not found" % self.build_id)
+        return build
+
+    def _visitor_build(self):
+        """A public build for a visitor who is not signed in; else to the login page."""
+        try:
+            signed_in = identity.current_identity() is not None
+        except identity.AuthError:
+            signed_in = True                      # a bad token: page_identity() decides
+        if signed_in:
+            return None
+        build = get_row(Build, self.build_id)
+        if build is None or not access.can_see(None, build):
+            identity.page_identity()              # redirects to /login
+        return build
+
+    @expose("jinja:bingarde.templates.build_detail")
+    def index(self, error=None, **kw):
+        build = self._visitor_build()
+        ident = None if build is not None else identity.page_identity()
+        if build is None:
+            build = self._build(ident)
         groups = [(role, label, icon, [f for f in build.files if f.role == role])
                   for role, label, icon in FILE_GROUPS]
         main = next((f for f in build.files if f.role == "artifact"), None)
+        is_admin = ident is not None and ident.is_admin
         return dict(build=build, files=build.files, file_groups=[g for g in groups if g[3]],
-                    main_file=main, current_page="buildlist")
+                    main_file=main, current_page="buildlist", is_admin=is_admin,
+                    visitor=ident is None,
+                    can_promote=ident is not None and ident.can_write(build),
+                    visible_to=access.groups_seeing(build) if is_admin else None,
+                    error=PROMOTE_ERRORS.get(error) if error else None,
+                    csrf_token=identity.csrf_token() if ident is not None else None)
+
+    @expose()
+    def promote(self, branch="", **kw):
+        """Move the build to another branch, e.g. a tested nightly to release/1.4."""
+        ident = identity.page_identity()
+        identity.require_page_post()
+        build = self._build(ident)
+        try:
+            promote(ident, build, branch.strip())
+        except identity.AuthError:
+            transaction.doom()                    # the branch may be changed already
+            redirect("/builds/%d" % build.id, params={"error": "forbidden"})
+        except ApiError as exc:
+            transaction.doom()
+            redirect("/builds/%d" % build.id, params={"error": exc.code})
+        redirect("/builds/%d" % build.id)
 
 
 class FilterController(TGController):
@@ -201,8 +253,10 @@ class BuildsController(TGController):
         ident = identity.page_identity()
         if not (kw.get("sort") and kw.get("order")):
             # Without sort parameters, come back with the remembered ones.
-            redirect("/builds", params={"sort": session.get("sort", "id"),
-                                      "order": session.get("order", "asc")})
+            params = {"sort": session.get("sort", "id"), "order": session.get("order", "asc")}
+            if kw.get("as_user"):
+                params["as_user"] = kw["as_user"]
+            redirect("/builds", params=params)
         return self.list_page(ident, kw, None)
 
     def list_page(self, ident, kw, tree, error=None):
@@ -221,6 +275,9 @@ class BuildsController(TGController):
         if error is not None:
             error, tree = "This filter cannot be used: %s" % error, None
 
+        # Admins may look at the list as another user sees it (?as_user=<id>).
+        view_as = get_row(User, kw.get("as_user")) if ident.is_admin and kw.get("as_user") else None
+        where = and_(access.build_clause(view_as or ident.user), where)
         total = DBSession.scalar(select(func.count()).select_from(Build).where(where))
         paging = Paging(total, PER_PAGE, kw.get("page"))
         direction = desc if order == "desc" else asc
@@ -231,7 +288,8 @@ class BuildsController(TGController):
         return dict(builds=builds, paging=paging, sort={"field": sort, "order": order},
                     filter_fields=filter_fields(), filter_tree=tree,
                     presets=[p.as_dict() for p in visible_presets(ident)],
-                    is_admin=ident.is_admin, error=error, current_page="buildlist")
+                    is_admin=ident.is_admin, error=error, current_page="buildlist",
+                    view_as=view_as)
 
     @expose()
     def delete(self, **kw):
@@ -247,11 +305,12 @@ class BuildsController(TGController):
 
     @expose("json")
     def values(self, field=None, q=None, **kw):
-        identity.page_identity()
+        ident = identity.page_identity()
         column = VALUE_FIELDS.get(field)
         if column is None:
             return json_response([])
-        query = select(column).distinct().order_by(column)
+        # Only values of visible builds: a hidden project's name is not shown either.
+        query = select(column).where(access.build_clause(ident.user)).distinct().order_by(column)
         if q:
             text = cast(column, String) if isinstance(column.type, Integer) else column
             query = query.where(text.ilike("%" + q.replace("%", "\\%").replace("_", "\\_") + "%",

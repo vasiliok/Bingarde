@@ -1,11 +1,12 @@
 """Template helpers, available in templates as ``h``."""
+import json
 import math
 from urllib.parse import urlencode
 
 from tg import request
 
 from bingarde import __version__
-from bingarde.lib import filetypes, identity, storage
+from bingarde.lib import filetypes, filters, identity, storage
 
 # The running Bingarde version (shown in the page footer).
 version = __version__
@@ -59,6 +60,16 @@ def csrf_token():
 
 def can_write(user):
     return identity.can_write(user)
+
+
+def describe_filter(tree):
+    """An access rule's filter in words."""
+    return filters.describe(tree)
+
+
+def filter_url(tree):
+    """The build list with this filter applied."""
+    return "/builds/filter?" + urlencode({"q": json.dumps(tree)}) if tree else "/builds"
 
 
 def storage_usage():

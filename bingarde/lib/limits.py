@@ -6,7 +6,8 @@ it dispatches, so a controller sees the body only after it has been read
 
 * A file upload (``POST /api/v2/builds/<id>/files``) must show write access
   first: a write API token, or a session that sends its CSRF token in the
-  ``X-CSRF-Token`` header.
+  ``X-CSRF-Token`` header, and a user who may change that build (a write rule
+  that finds it, and its creator or an admin).
 * Any other body may be at most ``max_request_body`` bytes (env
   MAX_REQUEST_BODY, default 2 MiB).
 * A body needs a Content-Length header (no chunked transfer encoding).
@@ -24,7 +25,7 @@ from webob import Response
 from bingarde.lib import identity
 from bingarde.lib.api import auth_error_response, error_response
 
-UPLOAD_PATH = re.compile(r"^/api/v2/builds/[^/]+/files/?$")
+UPLOAD_PATH = re.compile(r"^/api/v2/builds/([^/]+)/files/?$")
 DEFAULT_MAX_BODY = 2 * 1024 * 1024
 
 
@@ -47,11 +48,17 @@ def check_body(request):
         return _refuse(request, 411, "length_required", "send the body with a Content-Length")
     if not request.content_length:
         return None
-    if request.method == "POST" and UPLOAD_PATH.match(request.path_info):
+    upload = UPLOAD_PATH.match(request.path_info) if request.method == "POST" else None
+    if upload:
+        from bingarde.controllers.api import check_may_change, get_build
+        from bingarde.lib.api import ApiError
         try:
-            identity.require(write=True, form_csrf=False)
+            caller = identity.require(write=True, form_csrf=False)
+            check_may_change(caller, get_build(upload.group(1), caller))
         except identity.AuthError as exc:
             return auth_error_response(exc)
+        except ApiError as exc:
+            return error_response(exc.status, exc.code, str(exc))
         return None
     limit = max_request_body()
     if request.content_length > limit:

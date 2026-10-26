@@ -1,0 +1,94 @@
+{% extends "bingarde.templates.admin_layout" %}
+
+{% block caption %}Users - Site settings - Bingarde{% endblock %}
+
+{% macro page_item(page, label, aria=None) -%}
+    {% if page is none %}
+    <li class="page-item disabled"><span class="page-link"{% if aria %} aria-label="{{ aria }}"{% endif %}>{{ label }}</span></li>
+    {% elif page == paging.page %}
+    <li class="page-item active" aria-current="page"><span class="page-link">{{ label }}</span></li>
+    {% else %}
+    <li class="page-item"><a class="page-link" href="{{ h.query_url(page=page, done=None) }}"{% if aria %} aria-label="{{ aria }}"{% endif %}>{{ label }}</a></li>
+    {% endif %}
+{%- endmacro %}
+
+{% block settings %}
+<div style="max-width: 1100px;">
+    <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+        <h1 class="h4 mb-0">Users</h1>
+        <form class="ms-auto" method="get" action="/admin/users" role="search">
+            <input type="search" class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Search e-mail or name…" aria-label="Search users" style="min-width: 16rem;">
+        </form>
+    </div>
+    <p class="text-body-secondary">People get an account when they sign in for the first time and join the groups that new users join. Add someone here only to give them groups before that.</p>
+
+    {% if warning %}<div class="alert alert-warning" role="alert" id="id-no-auto-join"><i class="bi bi-exclamation-triangle me-1"></i>{{ warning }} <a href="/admin/groups">Groups</a></div>{% endif %}
+    {% if done %}<div class="alert alert-success done" role="status">{{ done }}</div>{% endif %}
+    {% if error %}<div class="alert alert-danger error" role="alert">{{ error }}</div>{% endif %}
+
+    <div class="card page-card mb-4">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-person-plus me-1"></i>Add a user</div>
+        <div class="card-body">
+            <form class="row g-3 align-items-end" method="post" action="/admin/users/add">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <div class="col-md-4">
+                    <label for="id-user-email" class="form-label">E-mail</label>
+                    <input type="email" class="form-control" id="id-user-email" name="email" maxlength="320" required value="{{ form.email or '' }}" placeholder="anna@example.com">
+                </div>
+                <div class="col-md-3">
+                    <label for="id-user-name" class="form-label">Name <span class="text-body-secondary">(optional)</span></label>
+                    <input type="text" class="form-control" id="id-user-name" name="name" maxlength="200" value="{{ form.name or '' }}">
+                </div>
+                <div class="col-md-5">
+                    <span class="form-label d-block">Groups</span>
+                    {% set ticked = form.groups if form.groups is defined and form.groups else auto_groups %}
+                    {% for g in groups %}
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" name="group" value="{{ g.id }}" id="id-add-group-{{ g.id }}"{% if g.id in ticked %} checked{% endif %}>
+                        <label class="form-check-label" for="id-add-group-{{ g.id }}">{% if g.is_system %}<i class="bi bi-lock-fill small"></i> {% endif %}{{ g.name }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="col-12 d-flex align-items-center gap-3">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                    <span class="small text-body-secondary">They can sign in with this e-mail; the account is linked at the first sign-in.</span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card page-card">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="id-user-table">
+                <thead><tr><th>User</th><th>Groups</th><th>Status</th><th>Last sign-in</th><th></th></tr></thead>
+                <tbody>
+                {% for u, info, sees in users %}
+                <tr>
+                    <td><div>{{ u.name if u.name != u.email else "" }}</div><div class="small text-body-secondary">{{ u.email }}</div></td>
+                    <td>{% for g in info.groups %}<span class="badge text-bg-light border me-1">{{ g.name }}</span>{% endfor %}
+                        {% if not sees %}<span class="small text-body-secondary">sees nothing</span>{% endif %}</td>
+                    <td>{% if u.is_active %}<span class="badge text-bg-success">active</span>{% else %}<span class="badge text-bg-secondary">disabled</span>{% endif %}</td>
+                    <td>{{ h.format_date(u.last_login_at) or "never" }}</td>
+                    <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="/admin/users/{{ u.id }}">Edit</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-center text-body-secondary py-4">No users found.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if paging.pages > 1 %}
+        <div class="card-footer bg-body d-flex align-items-center gap-3">
+            <span class="small text-body-secondary ms-auto">{{ paging.first_row }}&ndash;{{ paging.last_row }}&nbsp;/&nbsp;{{ paging.total }}</span>
+            <nav aria-label="Pages">
+                <ul class="pagination pagination-sm mb-0">
+                    {{ page_item(paging.prev, '<i class="bi bi-chevron-left"></i>'|safe, "Previous page") }}
+                    {% for page in paging.links() %}{{ page_item(page, page if page else '&hellip;'|safe) }}{% endfor %}
+                    {{ page_item(paging.next, '<i class="bi bi-chevron-right"></i>'|safe, "Next page") }}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

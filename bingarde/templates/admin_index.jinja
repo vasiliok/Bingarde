@@ -1,0 +1,44 @@
+{% extends "bingarde.templates.admin_layout" %}
+
+{% block caption %}Site settings - Bingarde{% endblock %}
+
+{% block settings %}
+<div style="max-width: 1100px;">
+    <h1 class="h4 mb-1">Site settings</h1>
+    <p class="text-body-secondary">Only admins see these pages.</p>
+
+    {% if warning %}<div class="alert alert-warning" role="alert" id="id-no-auto-join"><i class="bi bi-exclamation-triangle me-1"></i>{{ warning }}</div>{% endif %}
+
+    <div class="row g-4">
+        <div class="col-md-6">
+            <a class="card page-card h-100 text-decoration-none text-body" href="/admin/users" id="id-settings-users">
+                <div class="card-body">
+                    <h2 class="h5"><i class="bi bi-person me-2"></i>Users</h2>
+                    <p class="mb-1"><strong>{{ counts.users }}</strong> users{% if counts.disabled %}, {{ counts.disabled }} disabled{% endif %}; <strong>{{ counts.admins }}</strong> {{ "admin" if counts.admins == 1 else "admins" }}</p>
+                    <p class="small text-body-secondary mb-0">Add, disable and delete users, set their groups, see what they can see.</p>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6">
+            <a class="card page-card h-100 text-decoration-none text-body" href="/admin/groups" id="id-settings-groups">
+                <div class="card-body">
+                    <h2 class="h5"><i class="bi bi-people me-2"></i>Groups</h2>
+                    <p class="mb-1"><strong>{{ counts.groups }}</strong> groups{% if auto_groups %}; new users join {{ auto_groups|join(", ") }}{% endif %}</p>
+                    <p class="small text-body-secondary mb-0">Access rules: which builds each group sees and may change.</p>
+                </div>
+            </a>
+        </div>
+        {% if public %}
+        <div class="col-md-6">
+            <a class="card page-card h-100 text-decoration-none text-body" href="/admin/groups/{{ public.id }}" id="id-settings-public">
+                <div class="card-body">
+                    <h2 class="h5"><i class="bi bi-globe2 me-2"></i>Public downloads</h2>
+                    <p class="mb-1">{% if public.rules %}<strong>{{ public_builds }}</strong> {{ "build" if public_builds == 1 else "builds" }} anyone can download without signing in{% else %}Off: nothing is public{% endif %}</p>
+                    <p class="small text-body-secondary mb-0">The rules of the Public group: builds for visitors who are not signed in.</p>
+                </div>
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

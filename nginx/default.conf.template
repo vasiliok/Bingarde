@@ -7,6 +7,9 @@
 
 # Open connections per client address (see limit_conn below).
 limit_conn_zone $binary_remote_addr zone=perip:10m;
+# Download requests per client address. Public builds can be downloaded by
+# anyone, so a single address may not start more than this.
+limit_req_zone $binary_remote_addr zone=downloads:10m rate=2r/s;
 
 server {
     listen 80;
@@ -67,6 +70,14 @@ server {
         # Give slow CI uploads time; the clock restarts with every chunk.
         client_body_timeout 300s;
         proxy_request_buffering off;
+        proxy_pass http://web:8000;
+    }
+
+    # Downloads (one file, or a build as zip): the app checks access, then nginx
+    # sends the file. At most 2 a second per address, with bursts of 30.
+    location ~ ^/(files/|api/v2/builds/[^/]+/archive/?$) {
+        limit_req zone=downloads burst=30 nodelay;
+        limit_req_status 429;
         proxy_pass http://web:8000;
     }
 

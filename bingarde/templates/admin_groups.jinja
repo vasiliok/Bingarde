@@ -1,0 +1,53 @@
+{% extends "bingarde.templates.admin_layout" %}
+
+{% block caption %}Groups - Site settings - Bingarde{% endblock %}
+
+{% block settings %}
+<div style="max-width: 1100px;">
+    <h1 class="h4 mb-1">Groups</h1>
+    <p class="text-body-secondary">A group's rules decide which builds its members see: filters like those of the build list, read or write. Someone without a matching rule sees nothing. Members of <strong>Admin</strong> see every build and manage users and groups.</p>
+
+    {% if warning %}<div class="alert alert-warning" role="alert" id="id-no-auto-join"><i class="bi bi-exclamation-triangle me-1"></i>{{ warning }}</div>{% endif %}
+    {% if done %}<div class="alert alert-success done" role="status">{{ done }}</div>{% endif %}
+    {% if error %}<div class="alert alert-danger error" role="alert">{{ error }}</div>{% endif %}
+
+    <div class="card page-card mb-4">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="id-group-table">
+                <thead><tr><th class="ps-3">Group</th><th>Members</th><th>Access</th><th></th></tr></thead>
+                <tbody>
+                {% for g in groups %}
+                <tr>
+                    <td class="ps-3">{% if g.is_system %}<i class="bi bi-lock-fill text-body-secondary me-1" title="Built-in"></i>{% elif g.is_public %}<i class="bi bi-globe2 text-body-secondary me-1" title="Built-in: visitors who are not signed in"></i>{% endif %}<a href="/admin/groups/{{ g.id }}">{{ g.name }}</a>
+                        {% if g.description %}<div class="small text-body-secondary">{{ g.description }}</div>{% endif %}</td>
+                    <td>{{ "everyone" if g.is_public else g.members|length }}</td>
+                    <td>{% if g.is_system %}every build; manages users and groups
+                        {% else %}{% for r in g.rules %}<div>{{ h.describe_filter(r.filter) }}: {{ r.level }}</div>{% else %}<span class="text-body-secondary">{{ "no rules: nothing is public" if g.is_public else "no rules: sees nothing" }}</span>{% endfor %}{% endif %}
+                        {% if g.auto_join %}<span class="badge text-bg-info mt-1">{{ "new users join" if g.auto_join == "*" else "new users of " ~ g.auto_join ~ " join" }}</span>{% endif %}</td>
+                    <td class="text-end pe-3"><a class="btn btn-outline-secondary btn-sm" href="/admin/groups/{{ g.id }}">Open</a></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card page-card">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-plus-circle me-1"></i>New group</div>
+        <div class="card-body">
+            <form class="row g-3 align-items-end" method="post" action="/admin/groups/create">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <div class="col-md-4">
+                    <label for="id-group-name" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="id-group-name" name="name" maxlength="100" required value="{{ form.name or '' }}" placeholder="e.g. Customers">
+                </div>
+                <div class="col-md-6">
+                    <label for="id-group-description" class="form-label">Description <span class="text-body-secondary">(optional)</span></label>
+                    <input type="text" class="form-control" id="id-group-description" name="description" maxlength="500" value="{{ form.description or '' }}" placeholder="e.g. Partners who get official releases only">
+                </div>
+                <div class="col-md-2 d-grid"><button type="submit" class="btn btn-primary">Create</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

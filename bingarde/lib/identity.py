@@ -1,17 +1,17 @@
 """Who is calling: a CI machine with an API token, or a browser with a login session.
 
 * API tokens come in the ``Authorization: Bearer bg_...`` header. Only their
-  sha256 hash is stored. A token has scope "read" or "write".
-* Signed-in users may read. Writing (with a session or a "write" token) needs
-  a writer: an admin, or a user in WRITER_EMAILS / WRITER_DOMAINS ("*" = any
-  user). This is checked on every request, so changing the settings applies
-  to existing sessions and tokens too.
+  sha256 hash is stored. A token has scope "read" or "write": a read token
+  never writes, whatever its owner may do.
+* Which builds a user may see and change comes from their groups (lib/access.py).
+  This is checked on every request, so changing groups applies to existing
+  sessions and tokens too.
 * Browser logins keep ``user_id`` in the Beaker session. Every POST made with
   a session must carry the session's CSRF token (header ``X-CSRF-Token`` or
   form field ``_csrf_token``). Requests with a Bearer token are exempt.
-* Admins are the users whose e-mail is listed in ADMIN_EMAILS.
-* ALLOWED_EMAIL_DOMAINS and BLOCKED_EMAILS are checked on every request too,
-  so a user taken out of them loses their sessions and tokens at once.
+* Admins are the members of the built-in Admin group.
+* Disabled users (``is_active`` false) and e-mails outside ALLOWED_EMAIL_DOMAINS
+  lose their sessions and tokens at once.
 """
 import datetime
 import hashlib
@@ -23,6 +23,7 @@ from typing import Optional
 from sqlalchemy import select
 from tg import abort, config, redirect, request, session
 
+from bingarde.lib import access
 from bingarde.model import ApiToken, DBSession, User
 
 TOKEN_PREFIX = "bg_"
@@ -43,7 +44,7 @@ class AuthError(Exception):
 class Identity:
     user: User
     via: str                      # "token" or "session"
-    scope: str                    # "read" or "write"
+    scope: str                    # "read" or "write": what the token allows (sessions: write)
     token: Optional[ApiToken] = None
 
     @property
@@ -55,6 +56,10 @@ class Identity:
         return self.is_admin or (build.created_by_id is not None
                                  and build.created_by_id == self.user.id)
 
+    def can_write(self, build):
+        """A write token or session, and a write rule that matches ``build``."""
+        return self.scope == "write" and access.allows(self.user, build, "write")
+
 
 # ---- settings -----------------------------------------------------------------
 
@@ -63,17 +68,12 @@ def _csv_setting(name):
 
 
 def is_admin(user):
-    return user is not None and user.email.lower() in _csv_setting("admin_emails")
+    return access.is_admin(user)
 
 
 def can_write(user):
-    """True for admins and for users in WRITER_EMAILS or WRITER_DOMAINS."""
-    if user is None or not user.is_active:
-        return False
-    email = user.email.lower()
-    domains = _csv_setting("writer_domains")
-    return (is_admin(user) or email in _csv_setting("writer_emails")
-            or "*" in domains or email.rsplit("@", 1)[-1] in domains)
+    """True when ``user`` may write somewhere: an admin, or a "write" rule."""
+    return user is not None and user.is_active and access.has_write_rule(user)
 
 
 def allowed_email_domains():
@@ -81,11 +81,8 @@ def allowed_email_domains():
 
 
 def email_allowed(email):
-    """True when the e-mail is not in BLOCKED_EMAILS, and ALLOWED_EMAIL_DOMAINS is
-    empty or contains its domain."""
+    """True when ALLOWED_EMAIL_DOMAINS is empty or contains the e-mail's domain."""
     email = (email or "").lower()
-    if email in _csv_setting("blocked_emails"):
-        return False
     domains = allowed_email_domains()
     return not domains or email.rsplit("@", 1)[-1] in domains
 
@@ -125,8 +122,7 @@ def _identity_from_token(token):
     if not email_allowed(row.user.email):
         raise AuthError(401, "%s may no longer use this site" % row.user.email)
     row.last_used_at = datetime.datetime.now(datetime.timezone.utc)
-    scope = "write" if row.scope == "write" and can_write(row.user) else "read"
-    return Identity(user=row.user, via="token", scope=scope, token=row)
+    return Identity(user=row.user, via="token", scope=row.scope, token=row)
 
 
 # ---- sessions -----------------------------------------------------------------
@@ -146,7 +142,7 @@ def _identity_from_session():
     user = DBSession.get(User, user_id)
     if user is None or not user.is_active or not email_allowed(user.email):
         return None
-    return Identity(user=user, via="session", scope="write" if can_write(user) else "read")
+    return Identity(user=user, via="session", scope="write")
 
 
 def current_identity():
@@ -206,9 +202,7 @@ def require(write=False, admin=False, form_csrf=True):
     if identity.via == "session" and request.method not in ("GET", "HEAD", "OPTIONS"):
         check_csrf(form=form_csrf)
     if write and identity.scope != "write":
-        if identity.token is not None and identity.token.scope == "read":
-            raise AuthError(403, "this API token is read-only")
-        raise AuthError(403, "%s has read-only access" % identity.user.email)
+        raise AuthError(403, "this API token is read-only")
     if admin and not identity.is_admin:
         raise AuthError(403, "admin rights required")
     return identity

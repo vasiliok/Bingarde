@@ -1,15 +1,16 @@
-"""Who may write (writers and admins) and which builds they may change (their own).
+"""Who may write (a write rule, or an admin) and which builds they may change (their own).
 
-test.ini makes every @example.com user a writer; @example.net users are readers.
+The default test groups make every @example.com user a writer; @example.net
+users are readers (tests/conftest.py default_groups).
 """
 import pytest
-from tg import config
+from sqlalchemy import text
 
 from bingarde.config import middleware
 from bingarde.config.middleware import DEMO_SESSION_SECRET, check_settings
 from bingarde.model import ApiToken, Build, BuildFile
-from tests.conftest import (ADMIN_EMAIL, api_error, client, create_build, login, make_token, ok,
-                            build_fields, upload)
+from tests.conftest import (ADMIN_EMAIL, api_error, client, create_build, login, make_group,
+                            make_token, ok, build_fields, upload)
 from tests.test_tokens_page import create as create_token_in_page
 
 READER = "reader@example.net"
@@ -33,7 +34,7 @@ def test_reader_session_can_read_but_not_write(wsgi_app, app):
     assert len(ok(browser.get("/api/v2/builds"))["builds"]) == 1
     resp = browser.post_json("/api/v2/builds", build_fields(), headers={"X-CSRF-Token": csrf},
                              status=403)
-    assert "read-only access" in resp.json["error"]["message"]
+    assert "may not write builds of project 'game'" in resp.json["error"]["message"]
 
 
 def test_write_token_of_a_reader_only_reads(wsgi_app, migrated_db, app):
@@ -41,7 +42,7 @@ def test_write_token_of_a_reader_only_reads(wsgi_app, migrated_db, app):
     reader = client(wsgi_app, make_token(migrated_db, READER, "write"))
     assert len(ok(reader.get("/api/v2/builds"))["builds"]) == 1
     error = api_error(reader.post_json("/api/v2/builds", build_fields(), expect_errors=True), 403)
-    assert "read-only access" in error["message"]
+    assert "may not write builds" in error["message"]
 
 
 def test_reader_cannot_create_a_write_token(wsgi_app, db, anon):
@@ -55,26 +56,29 @@ def test_reader_cannot_create_a_write_token(wsgi_app, db, anon):
     assert db.query(ApiToken).one().scope == "read"
 
 
-def test_writer_from_writer_emails(wsgi_app, migrated_db, anon, monkeypatch):
-    monkeypatch.setitem(config, "writer_emails", "Reader@Example.net")
+def test_a_member_of_a_write_group_may_write(wsgi_app, migrated_db, anon):
+    make_group(migrated_db, "CI", [("*", "*", "write")], members=[READER])
     reader = client(wsgi_app, make_token(migrated_db, READER, "write"))
     ok(reader.post_json("/api/v2/builds", build_fields(), expect_errors=True), 201)
 
 
-def test_star_makes_everyone_a_writer(wsgi_app, migrated_db, anon, monkeypatch):
-    monkeypatch.setitem(config, "writer_domains", "*")
+def test_a_write_group_everyone_joins_makes_new_users_writers(wsgi_app, migrated_db, anon):
+    make_group(migrated_db, "Everyone writes", [("*", "*", "write")], auto_join="*")
     reader = client(wsgi_app, make_token(migrated_db, READER, "write"))
     ok(reader.post_json("/api/v2/builds", build_fields(), expect_errors=True), 201)
 
 
-def test_removing_a_writer_applies_to_existing_tokens(writer, monkeypatch):
+def test_leaving_the_write_group_applies_to_existing_tokens(writer, migrated_db):
     create_build(writer)
-    monkeypatch.setitem(config, "writer_domains", "")
+    with migrated_db.begin() as conn:
+        conn.execute(text("DELETE FROM group_members WHERE group_id = "
+                          "(SELECT id FROM groups WHERE name = 'Writers')"))
     api_error(writer.post_json("/api/v2/builds", build_fields(build=2), expect_errors=True), 403)
 
 
-def test_admins_can_always_write(app, monkeypatch):
-    monkeypatch.setitem(config, "writer_domains", "")
+def test_admins_can_always_write(app, migrated_db):
+    with migrated_db.begin() as conn:
+        conn.execute(text("DELETE FROM groups WHERE NOT is_system"))
     assert create_build(app)["id"]
 
 
@@ -147,4 +151,4 @@ def test_open_settings_are_logged(caplog, monkeypatch):
     check_settings({"session.secret": "s" * 40, "google_client_id": "id",
                     "allowed_email_domains": "", "writer_domains": "*"})
     assert "any account of the sign-in provider can sign in" in caplog.text
-    assert "every signed-in user can create and change builds" in caplog.text
+    assert "WRITER_DOMAINS is no longer used" in caplog.text

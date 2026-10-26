@@ -14,10 +14,10 @@ from email.message import EmailMessage
 from urllib.parse import urljoin
 
 import transaction
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from tg import config
 
-from bingarde.lib import filters
+from bingarde.lib import access, filters
 from bingarde.model import DBSession, FilterPreset, Build
 
 log = logging.getLogger(__name__)
@@ -46,8 +46,12 @@ def matching_recipients(build):
     for preset in presets:
         if not preset.user.email:
             continue
+        if not preset.user.is_active:
+            continue
         try:
-            where = filters.clause((preset.data or {}).get("filter"))
+            # Only builds the owner may see: a filter cannot widen their access.
+            where = and_(access.build_clause(preset.user),
+                         filters.clause((preset.data or {}).get("filter")))
             matches = DBSession.scalar(
                 select(func.count()).select_from(Build).where(Build.id == build.id, where))
         except Exception:

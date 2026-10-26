@@ -10,12 +10,14 @@
 
 {% block content %}
 <div class="container pb-4" style="max-width: 1100px;">
+    {% if not visitor %}
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="/builds">Builds</a></li>
             <li class="breadcrumb-item active" aria-current="page">#{{ build.id }}</li>
         </ol>
     </nav>
+    {% endif %}
 
     <div class="card page-card mb-4">
         <div class="card-body p-4">
@@ -39,13 +41,32 @@
                 <dt class="col-sm-2 text-body-secondary fw-normal">Revision</dt>
                 <dd class="col-sm-10"><code class="user-select-all" title="{{ build.revision }}">{{ build.revision }}</code></dd>
                 {% endif %}
-                {% if build.ci_url %}
+                {% if build.ci_url and not visitor %}
                 <dt class="col-sm-2 text-body-secondary fw-normal">CI job</dt>
                 <dd class="col-sm-10"><a href="{{ build.ci_url }}" rel="noopener noreferrer" target="_blank">{{ build.ci_url }} <i class="bi bi-box-arrow-up-right small"></i></a></dd>
                 {% endif %}
                 <dt class="col-sm-2 text-body-secondary fw-normal">Created</dt>
-                <dd class="col-sm-10 mb-0">{{ h.format_date(build.created_at) }}{% if build.created_by %} by {{ build.created_by.email }}{% endif %}</dd>
+                <dd class="col-sm-10 mb-0">{{ h.format_date(build.created_at) }}{% if is_admin and build.created_by %} by {{ build.created_by.email }}{% endif %}</dd>
+                {% if visible_to is not none %}
+                <dt class="col-sm-2 text-body-secondary fw-normal mt-2">Visible to</dt>
+                <dd class="col-sm-10 mb-0 mt-2" id="id-visible-to">{% for name in visible_to %}<span class="badge text-bg-light border me-1">{{ name }}</span>{% else %}<span class="text-body-secondary">admins only</span>{% endfor %}</dd>
+                {% endif %}
             </dl>
+            {% if error %}<div class="alert alert-danger error mt-3 mb-0" role="alert">{{ error }}</div>{% endif %}
+            {% if can_promote %}
+            <details class="mt-3" id="id-promote">
+                <summary class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-up-right-circle me-1"></i>Promote to branch…</summary>
+                <form class="row g-2 align-items-end mt-1" method="post" action="/builds/{{ build.id }}/promote">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                    <div class="col-sm-6">
+                        <label for="id-promote-branch" class="form-label small text-body-secondary">Move this build to the branch</label>
+                        <input type="text" class="form-control form-control-sm" id="id-promote-branch" name="branch" maxlength="255" required placeholder="e.g. release/1.4">
+                    </div>
+                    <div class="col-sm-3 d-grid"><button type="submit" class="btn btn-primary btn-sm">Promote</button></div>
+                    <div class="col-12 small text-body-secondary">Everyone who may see builds of the new branch sees this build at once.</div>
+                </form>
+            </details>
+            {% endif %}
         </div>
     </div>
 
@@ -97,11 +118,13 @@
         {% endif %}
     </div>
 
+    {% if not visitor %}
     <div class="card page-card">
         <div class="card-header bg-body fw-semibold"><i class="bi bi-clock-history me-1"></i>History</div>
         <div class="card-body">
             <textarea id="build-history" class="form-control font-monospace" rows="12" readonly>{{ build.history }}</textarea>
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}

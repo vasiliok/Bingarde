@@ -37,13 +37,16 @@ The provider proves who someone is; Bingarde decides what they may do:
   sign-in is refused ("The account has no verified e-mail address").
 - `ALLOWED_EMAIL_DOMAINS` limits sign-in to some e-mail domains. Leave it empty only when
   the provider has only your own users (a company Keycloak realm), never with Google or
-  GitLab.com: then any account of the provider can read all builds.
-- `BLOCKED_EMAILS`, `ADMIN_EMAILS`, `WRITER_EMAILS` and `WRITER_DOMAINS` work by e-mail,
-  whatever the provider.
+  GitLab.com: then any account of the provider gets an account and joins the groups that
+  take new users.
+- What a user may see and change comes from their groups, managed under **Site settings**
+  (**Users** and **Groups**): see [access.md](access.md). Disabled users cannot sign in.
 
 A user is the provider's account (issuer and `sub`). On the first sign-in a user with the
-same e-mail is linked to it, for example one made with `DEV_LOGIN`. Another account of the
-same provider with the same e-mail is refused ("already linked to another account").
+same e-mail is linked to it, for example one an admin added or one made with `DEV_LOGIN`.
+Another account of the same provider with the same e-mail is refused ("already linked to
+another account"). When the e-mail changes at the provider, the user takes the new one. All
+cases are in [access.md](access.md#signing-in-when-the-account-already-exists).
 
 **Changing the provider.** Users linked to the old provider are linked to the new one on
 their first sign-in with it, by e-mail; their tokens and presets stay. Register the new

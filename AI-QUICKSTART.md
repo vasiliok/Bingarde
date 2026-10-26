@@ -72,12 +72,12 @@ it; `docker compose` reads both on its own. Neither belongs in git (both are in 
          BASE_URL: ${BINGARDE_BASE_URL:?set BINGARDE_BASE_URL in .env}
          DEV_LOGIN: "0"
          ALLOWED_EMAIL_DOMAINS: example.com
-         ADMIN_EMAILS: lead@example.com
-         WRITER_DOMAINS: ""          # the demo has "*"
-         WRITER_EMAILS: lead@example.com,ci-bot@example.com
    ```
 
 3. Start it: `docker compose --profile run up --build -d` (no `demo` profile).
+4. Make the first admin: `docker compose exec web python -m bingarde.manage make-admin lead@example.com`.
+   The admin then sets up groups under **Site settings** → **Groups** ([docs/access.md](docs/access.md)):
+   who reads what, and a group with a `write` rule for the CI account.
 
 Settings that matter:
 
@@ -89,9 +89,7 @@ Settings that matter:
 | `POSTGRES_PASSWORD` | yes | Only takes effect when the database volume is created |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | yes | Or only `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` for Google |
 | `OIDC_NAME` | no | Label of the sign-in button |
-| `ALLOWED_EMAIL_DOMAINS` | strongly | Empty means any account of the provider can sign in and read |
-| `ADMIN_EMAILS` | yes | Admins may change and delete any build |
-| `WRITER_EMAILS`, `WRITER_DOMAINS` | yes | Who may upload; `*` = everyone who signs in |
+| `ALLOWED_EMAIL_DOMAINS` | strongly | Empty means any account of the provider can sign in and join the new-user groups |
 | `BINGARDE_PORT`, `BINGARDE_BIND` | no | Host port (8080) and address (`127.0.0.1`; `0.0.0.0` for the network) |
 | `BINGARDE_MAX_UPLOAD` | no | Largest upload nginx accepts, e.g. `50g` (default `20g`) |
 | `STORAGE=s3`, `S3_*`, `AWS_*` | no | Files in a bucket, see [docs/storage.md](docs/storage.md) |
@@ -114,7 +112,7 @@ pass large bodies (as large as `BINGARDE_MAX_UPLOAD`) and long requests (10 minu
 ```bash
 docker compose ps                         # db healthy; web and nginx running
 curl -s http://localhost:8080/health
-# {"status": "ok", "database": true, "storage": true, "version": "1.2.0"}
+# {"status": "ok", "database": true, "storage": true, "version": "2.0.0"}
 docker compose logs web | tail -20        # startup errors name the bad setting
 ```
 
@@ -122,9 +120,9 @@ Then open the site, sign in, and check that the user's e-mail shows in the heade
 
 ## First upload
 
-1. A writer signs in and opens **API tokens** (`/tokens`): name `ci`, scope `write`. The
-   token (`bg_...`) is shown once. A CI token belongs to a writer, e.g. a bot account in
-   `WRITER_EMAILS`.
+1. A user with a `write` rule signs in and opens **API tokens** (`/tokens`): name `ci`, scope
+   `write`. The token (`bg_...`) is shown once. A CI token belongs to such a user, e.g. a bot
+   account in a "CI" group with a `write` rule without conditions (every build).
 2. Upload with the script from this repo (Python 3, no packages):
 
    ```bash
@@ -147,7 +145,8 @@ Then open the site, sign in, and check that the user's e-mail shows in the heade
 | web exits: `OIDC_CLIENT_ID is set but ...` | Set `OIDC_ISSUER` and `OIDC_CLIENT_SECRET` too; the issuer must be `https://` |
 | Provider says the redirect URI does not match | Register exactly `<BASE_URL>login/oidc/callback`; check `BASE_URL` and its trailing `/` |
 | "The account has no verified e-mail address." | The provider must send `email_verified: true` (docs/login.md) |
-| `403` on upload, or no `write` scope offered | The user is not a writer: add them to `WRITER_EMAILS` or `WRITER_DOMAINS` |
+| `403` on upload, or no `write` scope offered | The user has no `write` rule that finds that build: add them to a group that has one (**Site settings** → **Groups**) |
+| A user sees no builds, or only releases | Their groups have no rule for those builds; their user page shows what they can see |
 | `401` from the API | Token wrong, revoked or expired; header is `Authorization: Bearer bg_...` |
 | `413` on upload | Larger than `BINGARDE_MAX_UPLOAD` (or the HTTPS proxy's own limit) |
 | Download answers `302` with S3 | Downloads redirect to a signed bucket link: use `curl -L` |
@@ -158,6 +157,10 @@ Then open the site, sign in, and check that the user's e-mail shows in the heade
 
 - Upgrade: `git pull && git submodule update --init`, then
   `docker compose --profile run up --build -d`. Database migrations run when web starts.
+  From version 1 to 2: keep `ADMIN_EMAILS`, `WRITER_EMAILS`, `WRITER_DOMAINS` and
+  `BLOCKED_EMAILS` set for that first start, so they become groups; then remove them. Users
+  who are not writers see only release builds (branches `release/...`, `release-...`) until an
+  admin gives them more ([docs/access.md](docs/access.md#upgrading-from-version-1)).
 - All data is in two volumes: `pgdata` (database) and `store` (files; not used with S3).
 - Back up the database: `docker compose exec -T db pg_dump -U bingarde bingarde > bingarde.sql`.
 - Back up the files:

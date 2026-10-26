@@ -7,7 +7,9 @@ the build, streams the files and sets the final status in one step. The API it u
 
 ## Before you start
 
-1. Sign in to Bingarde as a writer and create a **`write`** token on the **API tokens** page.
+1. Sign in to Bingarde with an account that may write those builds (a group with a
+   `write` rule that finds them, see [access.md](access.md)) and create a **`write`** token on the **API
+   tokens** page.
 2. Store it as a secret of the CI system, named `BINGARDE_TOKEN` below. Never put it into
    the pipeline file.
 3. The CI runner must reach Bingarde over HTTPS and have `python3`.

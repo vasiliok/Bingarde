@@ -90,3 +90,45 @@ def test_user_moves_to_a_new_provider(session):
     assert moved.id == old.id
     assert [(u.oidc_issuer, u.oidc_sub) for u in session.query(User)] == [(KEYCLOAK, "kc-1")]
     assert find_or_create_user("pat@example.com", "", KEYCLOAK, "kc-1").id == old.id
+
+
+# ---- users already in the list, e-mail changes, groups ------------------------
+
+def _groups(user):
+    DBSession.flush()
+    DBSession.expire(user, ["memberships"])
+    return sorted(m.group.name for m in user.memberships)
+
+
+def test_new_e_mail_at_the_provider_is_taken_over(session):
+    user = find_or_create_user("pat@old.example.com", "Pat", KEYCLOAK, "kc-1")
+    again = find_or_create_user("Pat@New.example.com", "Pat", KEYCLOAK, "kc-1")
+    assert again.id == user.id and again.email == "pat@new.example.com"
+
+
+def test_new_e_mail_of_another_user_is_refused(session):
+    pat = find_or_create_user("pat@example.com", "Pat", KEYCLOAK, "kc-1")
+    find_or_create_user("kim@example.com", "Kim", KEYCLOAK, "kc-2")
+    with pytest.raises(LoginError) as err:
+        find_or_create_user("kim@example.com", "Pat", KEYCLOAK, "kc-1")
+    assert err.value.code == "linked" and pat.email == "pat@example.com"
+
+
+def test_only_new_users_join_auto_join_groups(session):
+    # tests/conftest.py: everyone joins Readers, @example.com users also Writers.
+    added = User(email="added@example.com", name="Added", is_active=True)  # by an admin
+    session.add(added)
+    session.flush()
+    linked = find_or_create_user("added@example.com", "Added", KEYCLOAK, "kc-1")
+    assert linked.id == added.id and _groups(linked) == []
+    new = find_or_create_user("new@example.com", "New", KEYCLOAK, "kc-2")
+    assert _groups(new) == ["Readers", "Writers"]
+    assert _groups(find_or_create_user("other@example.org", "O", KEYCLOAK, "kc-3")) == ["Readers"]
+
+
+def test_a_deleted_user_comes_back_as_new(session):
+    user = find_or_create_user("pat@example.com", "Pat", KEYCLOAK, "kc-1")
+    session.delete(user)
+    session.flush()
+    again = find_or_create_user("pat@example.com", "Pat", KEYCLOAK, "kc-1")
+    assert again.id != user.id and _groups(again) == ["Readers", "Writers"]

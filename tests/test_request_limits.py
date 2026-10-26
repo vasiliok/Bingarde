@@ -4,7 +4,7 @@ import io
 from tg import config
 from webob import Request
 
-from tests.conftest import ADMIN_EMAIL, create_build, login, make_token, upload
+from tests.conftest import ADMIN_EMAIL, create_build, login, make_token, no_groups, upload
 
 
 class WatchedInput(io.BytesIO):
@@ -117,3 +117,22 @@ def test_body_limit_comes_from_the_setting(app, monkeypatch):
     assert resp.status_int == 413
     resp = app.patch_json("/api/v2/builds/%d" % build["id"], {"history": "short"})
     assert resp.status_int == 200
+
+
+def test_upload_without_a_write_rule_is_refused_before_the_body_is_read(wsgi_app, migrated_db, app):
+    build = create_build(app)
+    token = make_token(migrated_db, "reader@example.net", "write")    # reads, may not write
+    resp, body = send(wsgi_app, "/api/v2/builds/%d/files" % build["id"],
+                      headers={"Authorization": "Bearer " + token})
+    assert resp.status_int == 403
+    assert not body.touched
+
+
+def test_upload_to_a_hidden_build_is_404_before_the_body_is_read(wsgi_app, migrated_db, app):
+    build = create_build(app)
+    no_groups(migrated_db)
+    token = make_token(migrated_db, "nobody@example.com", "write")
+    resp, body = send(wsgi_app, "/api/v2/builds/%d/files" % build["id"],
+                      headers={"Authorization": "Bearer " + token})
+    assert resp.status_int == 404
+    assert not body.touched

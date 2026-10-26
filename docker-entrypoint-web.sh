@@ -18,6 +18,12 @@ fi
 echo "[web] applying database migrations..."
 alembic upgrade head
 
+case "$(echo "${DEV_LOGIN:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes)
+        echo "[web] demo: setting up the demo admin and group..."
+        python -m bingarde.manage demo-access ;;
+esac
+
 echo "[web] copying static files for nginx..."
 mkdir -p "${STATIC_ROOT:-/app/staticfiles}"
 cp -a bingarde/public/static/. "${STATIC_ROOT:-/app/staticfiles}/"

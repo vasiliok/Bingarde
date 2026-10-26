@@ -5,7 +5,8 @@
                                          tree, lib/filters.py); limit, offset
   POST   /api/v2/builds                  create (JSON); 201, or 200 for a rerun of the same build
   GET    /api/v2/builds/<id>
-  PATCH  /api/v2/builds/<id>             status, revision, ci_url, history, name, properties
+  PATCH  /api/v2/builds/<id>             status, revision, ci_url, history, name, properties;
+                                         branch (promotion, e.g. to release/1.4)
   DELETE /api/v2/builds/<id>             admins only
   GET    /api/v2/builds/<id>/archive     zip of all files
   GET    /api/v2/builds/<id>/files
@@ -14,9 +15,11 @@
   DELETE /api/v2/files/<id>              admins only
 
 Every call needs an API token (``Authorization: Bearer bg_...``) or a login
-session. Changes need write access (see lib/identity.py), and an existing build
-can only be changed by the user who created it or an admin; deleting needs an
-admin.
+session. The caller only sees the builds their groups may read (lib/access.py);
+others answer 404. Changes need a write token or session and a write rule
+that finds the build, before and after the change, and an existing build can
+only be changed by the user who created it or an admin. Promotion (a new
+branch) needs only the write rule, from any user. Deleting needs an admin.
 """
 import json
 
@@ -24,7 +27,8 @@ from sqlalchemy import and_, func, select, true
 from tg import TGController, expose, request
 from webob import Response
 
-from bingarde.lib import filetypes, filters, identity, notify, storage
+from bingarde.controllers import admin_api
+from bingarde.lib import access, filetypes, filters, identity, notify, storage
 from bingarde.lib.api import (ApiError, endpoint, error_response, invalid, json_body,
                                 methods, not_found)
 from bingarde.model import DBSession, Build, BuildFile, db_int, get_row
@@ -34,6 +38,8 @@ from bingarde.model.build import FILE_ROLES, BUILD_STATUSES
 IDENTITY_FIELDS = ("project", "branch", "platform", "build", "config", "arch")
 # Fields that a rerun or PATCH may change.
 UPDATABLE_FIELDS = ("status", "revision", "ci_url", "history", "name", "properties")
+# PATCH may also move a build to another branch: promotion.
+PATCH_FIELDS = UPDATABLE_FIELDS + ("branch",)
 # Text limits, as in the model (history: a VCS changelog, 256 KiB).
 MAX_LENGTH = {"project": 100, "branch": 255, "platform": 50, "config": 50, "arch": 50,
               "revision": 64, "ci_url": 1024, "name": 255, "history": 256 * 1024}
@@ -109,24 +115,56 @@ def apply_updates(build, body):
             setattr(build, name, value)
 
 
+def check_can_write(caller, build):
+    """A write rule of the caller matches the build. Changes are checked before
+    and after: a build may not be moved where its writer may not write."""
+    if not caller.can_write(build):
+        raise identity.AuthError(
+            403, "%s may not write builds of project %r, branch %r"
+            % (caller.user.email, build.project, build.branch))
+
+
 def check_may_change(caller, build):
+    check_can_write(caller, build)
     if not caller.may_change(build):
         raise identity.AuthError(
             403, "build %d belongs to another user; only they or an admin can change it" % build.id)
 
 
-def get_build(build_id):
+def get_build(build_id, caller):
+    """The build, if ``caller`` may see it; else 404, as if it did not exist.
+    ``caller`` None is a visitor: only public builds."""
     build = get_row(Build, build_id)
-    if build is None:
+    if build is None or not access.can_see(caller.user if caller else None, build):
         raise not_found("build", build_id)
     return build
 
 
-def get_file(file_id):
+def get_file(file_id, caller):
     build_file = get_row(BuildFile, file_id)
-    if build_file is None:
+    if build_file is None or not access.can_see(caller.user, build_file.build):
         raise not_found("file", file_id)
     return build_file
+
+
+def promote(caller, build, branch):
+    """Move ``build`` to ``branch``, e.g. a tested nightly to release/1.4."""
+    branch = check_field("branch", branch)
+    if not branch:
+        raise invalid("branch must not be empty")
+    if branch == build.branch:
+        return
+    check_can_write(caller, build)
+    clash = DBSession.scalar(select(Build.id).where(
+        Build.project == build.project, Build.branch == branch, Build.platform == build.platform,
+        Build.config == build.config, Build.arch == build.arch, Build.build == build.build))
+    if clash is not None:
+        raise ApiError(409, "conflict", "build %d already is this build on branch %r"
+                       % (clash, branch))
+    note = "promoted from %s to %s by %s" % (build.branch, branch, caller.user.email)
+    build.history = (build.history + "\n" if build.history else "") + note
+    build.branch = branch
+    check_can_write(caller, build)
 
 
 class BuildsController(TGController):
@@ -137,11 +175,10 @@ class BuildsController(TGController):
     def index(self, **kw):
         if methods("GET", "POST") == "POST":
             return self._create(identity.require(write=True))
-        identity.require()
-        return self._list(kw)
+        return self._list(identity.require(), kw)
 
-    def _list(self, kw):
-        where = []
+    def _list(self, caller, kw):
+        where = [access.build_clause(caller.user)]
         for name in LIST_FILTERS:
             if kw.get(name):
                 where.append(func.lower(getattr(Build, name)) == kw[name].lower())
@@ -182,11 +219,13 @@ class BuildsController(TGController):
             # A CI rerun of the same build: keep one record, refresh what was sent.
             check_may_change(caller, existing)
             apply_updates(existing, body)
+            check_can_write(caller, existing)
             DBSession.flush()
             return existing.as_dict(), 200
 
         build = Build(status="complete", created_by_id=caller.user.id, properties={}, **ident)
         apply_updates(build, body)
+        check_can_write(caller, build)
         DBSession.add(build)
         DBSession.flush()
         notify.notify_new_build(build)
@@ -208,21 +247,25 @@ class BuildController(TGController):
     def index(self, **kw):
         method = methods("GET", "PATCH", "DELETE")
         if method == "GET":
-            identity.require()
-            return get_build(self.build_id).as_dict()
+            return get_build(self.build_id, identity.require()).as_dict()
         if method == "PATCH":
             caller = identity.require(write=True)
-            build = get_build(self.build_id)
-            check_may_change(caller, build)
+            build = get_build(self.build_id, caller)
             body = json_body()
-            unknown = set(body) - set(UPDATABLE_FIELDS)
+            unknown = set(body) - set(PATCH_FIELDS)
             if unknown:
                 raise invalid("these fields cannot be changed: %s" % ", ".join(sorted(unknown)))
+            if set(body) - {"branch"}:
+                check_may_change(caller, build)
+            if "branch" in body:
+                promote(caller, build, body["branch"])
             apply_updates(build, body)
+            if set(body) - {"branch"}:
+                check_can_write(caller, build)
             DBSession.flush()
             return build.as_dict()
-        identity.require(write=True, admin=True)
-        build = get_build(self.build_id)
+        caller = identity.require(write=True, admin=True)
+        build = get_build(self.build_id, caller)
         storage.delete_after_commit([f.path for f in build.files])
         DBSession.delete(build)
         return None, 204
@@ -230,9 +273,15 @@ class BuildController(TGController):
     @expose()
     @endpoint
     def archive(self, **kw):
+        """The build's files as a zip. Visitors get public builds; for others 401."""
         methods("GET")
-        identity.require()
-        build = get_build(self.build_id)
+        caller = identity.current_identity()
+        if caller is None:
+            build = get_row(Build, self.build_id)
+            if build is None or not access.can_see(None, build):
+                identity.require()                    # 401: authentication required
+        else:
+            build = get_build(self.build_id, caller)
         resp = Response(content_type="application/zip")
         resp.headers["Content-Disposition"] = "attachment; filename=%s" % storage.download_name(build.display_name)
         # Streamed as it is built, so the size is not known up front.
@@ -243,10 +292,9 @@ class BuildController(TGController):
     @endpoint
     def files(self, **kw):
         if methods("GET", "POST") == "GET":
-            identity.require()
-            return {"files": [f.as_dict() for f in get_build(self.build_id).files]}
+            return {"files": [f.as_dict() for f in get_build(self.build_id, identity.require()).files]}
         caller = identity.require(write=True)
-        return self._upload(get_build(self.build_id), kw.get("role"), caller)
+        return self._upload(get_build(self.build_id, caller), kw.get("role"), caller)
 
     def _upload(self, build, role, caller):
         check_may_change(caller, build)
@@ -302,10 +350,9 @@ class FileController(TGController):
     @endpoint
     def index(self, **kw):
         if methods("GET", "DELETE") == "GET":
-            identity.require()
-            return get_file(self.file_id).as_dict()
-        identity.require(write=True, admin=True)
-        build_file = get_file(self.file_id)
+            return get_file(self.file_id, identity.require()).as_dict()
+        caller = identity.require(write=True, admin=True)
+        build_file = get_file(self.file_id, caller)
         storage.delete_after_commit([build_file.path])
         DBSession.delete(build_file)
         return None, 204
@@ -314,6 +361,9 @@ class FileController(TGController):
 class V2Controller(TGController):
     builds = BuildsController()
     files = FilesController()
+    users = admin_api.UsersController()
+    groups = admin_api.GroupsController()
+    me = admin_api.MeController()
 
     @expose()
     def _default(self, *args, **kw):

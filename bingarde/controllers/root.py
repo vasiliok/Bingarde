@@ -5,6 +5,7 @@ from sqlalchemy import text
 from tg import TGController, abort, expose, redirect, request, response
 
 from bingarde import __version__
+from bingarde.controllers.admin import AdminController
 from bingarde.controllers.api import ApiController
 from bingarde.controllers.auth import LoginController
 from bingarde.controllers.error import ErrorController
@@ -36,6 +37,7 @@ def storage_ok():
 
 class RootController(TGController):
     api = ApiController()
+    admin = AdminController()
     login = LoginController()
     tokens = TokensController()
     builds = BuildsController()

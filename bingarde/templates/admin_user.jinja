@@ -1,0 +1,126 @@
+{% extends "bingarde.templates.admin_layout" %}
+
+{% block caption %}{{ user.email }} - Users - Site settings - Bingarde{% endblock %}
+
+{% block settings %}
+<div style="max-width: 1100px;">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/users">Users</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ user.email }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+        <h1 class="h4 mb-0">{{ user.name if user.name != user.email else user.email }}</h1>
+        {% if user.name != user.email %}<span class="text-body-secondary">{{ user.email }}</span>{% endif %}
+        {% if user.is_active %}<span class="badge text-bg-success">active</span>{% else %}<span class="badge text-bg-secondary">disabled</span>{% endif %}
+        <span class="small text-body-secondary ms-auto">last sign-in {{ h.format_date(user.last_login_at) or "never" }}</span>
+    </div>
+
+    {% if done %}<div class="alert alert-success done" role="status">{{ done }}</div>{% endif %}
+    {% if error %}<div class="alert alert-danger error" role="alert">{{ error }}</div>{% endif %}
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-5">
+            <div class="card page-card h-100">
+                <div class="card-header bg-body fw-semibold"><i class="bi bi-people me-1"></i>Groups</div>
+                <div class="card-body">
+                    <form method="post" action="/admin/users/{{ user.id }}/groups" id="id-user-groups">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                        {% for g in groups %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="group" value="{{ g.id }}" id="id-group-{{ g.id }}"{% if g.id in member_of %} checked{% endif %}>
+                            <label class="form-check-label" for="id-group-{{ g.id }}">{% if g.is_system %}<i class="bi bi-lock-fill small"></i> {% endif %}<a href="/admin/groups/{{ g.id }}">{{ g.name }}</a></label>
+                        </div>
+                        {% else %}
+                        <p class="text-body-secondary mb-0">No groups yet.</p>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-primary btn-sm mt-3">Save</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="card page-card h-100" id="id-user-access">
+                <div class="card-header bg-body fw-semibold"><i class="bi bi-eye me-1"></i>Can see</div>
+                <div class="card-body">
+                    {% if info.is_admin %}
+                    <p>Every build: this user is an admin.</p>
+                    {% elif rules %}
+                    <table class="table table-sm mb-3">
+                        <thead><tr><th>Builds that match</th><th>Access</th><th>From</th></tr></thead>
+                        <tbody>{% for group, rule in rules %}<tr><td><a href="{{ h.filter_url(rule.filter) }}">{{ h.describe_filter(rule.filter) }}</a></td><td>{{ rule.level }}</td><td><a href="/admin/groups/{{ group.id }}">{{ group.name }}</a></td></tr>{% endfor %}</tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-body-secondary">Nothing: no group of this user has a rule.</p>
+                    {% endif %}
+                    <p class="mb-0"><strong id="id-user-build-count">{{ build_count }}</strong> builds now ·
+                        <a href="/builds?as_user={{ user.id }}">Show these builds</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card page-card mb-4">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-pencil me-1"></i>Name</div>
+        <div class="card-body">
+            <form class="row g-2 align-items-end" method="post" action="/admin/users/{{ user.id }}/rename">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <div class="col-md-6"><input type="text" class="form-control" name="name" maxlength="200" value="{{ user.name }}" aria-label="Name"></div>
+                <div class="col-md-2 d-grid"><button type="submit" class="btn btn-outline-primary">Save</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card page-card mb-4">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-key me-1"></i>API tokens</div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="id-user-tokens">
+                <thead><tr><th class="ps-3">Name</th><th>Token</th><th>Scope</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                {% for t in tokens %}
+                <tr>
+                    <td class="ps-3">{{ t.name }}</td><td><code>{{ t.token_prefix }}…</code></td><td>{{ t.scope }}</td>
+                    <td>{{ h.format_date(t.expires_at, "%Y-%m-%d") or "never" }}</td>
+                    <td>{{ h.format_date(t.last_used_at) or "never" }}</td>
+                    <td>{% if t.revoked_at %}<span class="badge text-bg-secondary">revoked</span>{% elif t.expired %}<span class="badge text-bg-secondary">expired</span>{% else %}<span class="badge text-bg-success">active</span>{% endif %}</td>
+                    <td class="text-end pe-3">{% if not t.revoked_at %}
+                        <form method="post" action="/admin/users/{{ user.id }}/revoke" class="mb-0">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="token_id" value="{{ t.id }}">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Revoke</button>
+                        </form>{% endif %}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center text-body-secondary py-3">No tokens.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if not is_self %}
+    <div class="card page-card border-danger-subtle" id="id-danger-zone">
+        <div class="card-header bg-body fw-semibold text-danger"><i class="bi bi-exclamation-octagon me-1"></i>Danger zone</div>
+        <div class="card-body">
+            <form class="d-flex flex-wrap align-items-center gap-3 mb-3" method="post" action="/admin/users/{{ user.id }}/{{ 'disable' if user.is_active else 'enable' }}">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                {% if user.is_active %}
+                <button type="submit" class="btn btn-outline-danger" style="min-width: 7rem;">Disable</button>
+                <span class="small text-body-secondary">Signs them out and stops their tokens. Can be undone.</span>
+                {% else %}
+                <button type="submit" class="btn btn-outline-success" style="min-width: 7rem;">Enable</button>
+                <span class="small text-body-secondary">They can sign in and use their tokens again.</span>
+                {% endif %}
+            </form>
+            <form class="d-flex flex-wrap align-items-center gap-3" method="post" action="/admin/users/{{ user.id }}/delete">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-danger" style="min-width: 7rem;">Delete</button>
+                <input type="text" class="form-control form-control-sm" name="confirm" required placeholder="type {{ user.email }} to confirm" aria-label="Type the e-mail to confirm" style="max-width: 20rem;">
+                <span class="small text-body-secondary">Removes the user, their tokens and presets. Their builds stay.</span>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -77,11 +77,11 @@ services:
       # Demo value only. Set a long random string for any real deployment.
       SESSION_SECRET: change-me-demo-only
       BASE_URL: http://localhost:8080/
-      # Demo: e-mail-only login, this address is admin, and every user can
-      # write. For a real deployment turn DEV_LOGIN off and list the writers.
+      # Demo: e-mail-only login; admin@example.org is admin and everyone who
+      # signs in may write (python -m bingarde.manage demo-access). For a real
+      # deployment turn DEV_LOGIN off and make the first admin with
+      # "python -m bingarde.manage make-admin EMAIL" (docs/access.md).
       DEV_LOGIN: "1"
-      ADMIN_EMAILS: admin@example.org
-      WRITER_DOMAINS: "*"
       # Real sign-in with an OpenID Connect provider (docs/login.md): export
       # these before "docker compose up". For Google, GOOGLE_CLIENT_ID and
       # GOOGLE_CLIENT_SECRET alone are enough.

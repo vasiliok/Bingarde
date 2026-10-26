@@ -54,5 +54,5 @@ def init_model(engine):
 
 
 # Import the mapped classes so ``Base.metadata`` knows every table.
-from bingarde.model.auth import ApiToken, User  # noqa: E402,F401
+from bingarde.model.auth import AccessRule, ApiToken, Group, GroupMember, User  # noqa: E402,F401
 from bingarde.model.build import FilterPreset, Build, BuildFile  # noqa: E402,F401

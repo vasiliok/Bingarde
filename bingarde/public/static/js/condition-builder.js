@@ -35,10 +35,12 @@
             ['since', 'in the last, days', 'days'], ['older_than', 'older than, days', 'days']
         ],
         'lookup': [
-            ['eq', 'is', 'lookup'], ['neq', 'is not', 'lookup']
+            ['eq', 'is', 'lookup'], ['neq', 'is not', 'lookup'],
+            ['starts', 'starts with', 'lookupText'], ['contains', 'contains', 'lookupText']
         ],
         'text': [
-            ['contains', 'contains', 'text'], ['eq', 'is', 'text'], ['neq', 'is not', 'text']
+            ['contains', 'contains', 'text'], ['starts', 'starts with', 'text'],
+            ['eq', 'is', 'text'], ['neq', 'is not', 'text']
         ]
     };
 
@@ -103,16 +105,25 @@
         this.lookupUrl = options.lookupUrl || function(f) { return '/builds/values/' + encodeURIComponent(f); };
         this.noun = options.noun || 'builds';
         this._lookups = {};
-        // A tree too deep to show: serialize() returns it unchanged until an edit.
-        this._kept = fitsBuilder(options.preset) ? null : options.preset;
-        var model = treeToGroups(options.preset);
-        this.op = model.op;
-        this._render();
-        model.groups.forEach(function(g) { this.addGroup(g); }, this);
-        this._refresh();
+        this.$el.addClass('cb');
+        this.setTree(options.preset);
     }
 
+    var datalistCount = 0;
+
     ConditionBuilder.prototype = {
+
+        /* Show another filter tree (null: no conditions). A tree too deep to
+           show is kept: serialize() returns it unchanged until an edit. */
+        setTree: function(tree) {
+            this._kept = fitsBuilder(tree) ? null : tree;
+            var model = treeToGroups(tree);
+            this.op = model.op;
+            this._render();
+            model.groups.forEach(function(g) { this.addGroup(g); }, this);
+            this._refresh();
+            this.$el.trigger('cb:change');
+        },
 
         // ---- building blocks ------------------------------------------------
 
@@ -129,7 +140,7 @@
 
         _render: function() {
             var self = this;
-            this.$el.addClass('cb').empty();
+            this.$el.off('.cb').empty();
             if (this._kept) {
                 this.$notice = $('<div class="alert alert-warning cb-notice" role="status">' +
                     'This filter is nested deeper than the builder can show. It is applied as it is; ' +
@@ -146,22 +157,23 @@
             $('<button type="button" class="cb-add-group"><i class="bi bi-plus-lg"></i>Add new group</button>')
                 .appendTo(this.$actions);
 
-            this.$el.on('click', '.cb-top-toggle button', function() {
+            this.$el.on('click.cb', '.cb-top-toggle button', function() {
                 self.op = $(this).data('op');
                 self._refresh();
             });
             // Any edit drops the kept tree (Save preset / Apply are not edits).
-            this.$el.on('click', 'button', function() {
+            this.$el.on('click.cb', 'button', function() {
                 if (!$(this).closest('.cb-actions-end').length) { self._edited(); }
             });
-            this.$el.on('change input', 'input, select', function() { self._edited(); });
-            this.$el.on('click', '.cb-add-group', function() {
+            this.$el.on('change.cb input.cb', 'input, select', function() { self._edited(); });
+            this.$el.on('click.cb', '.cb-add-group', function() {
                 self.addGroup({op: 'and', conds: [{}]});
                 self._refresh();
             });
         },
 
         _edited: function() {
+            this.$el.trigger('cb:change');
             if (this._kept) {
                 this._kept = null;
                 this.$notice.remove();
@@ -270,6 +282,16 @@
                 case 'numberPair': $box.append(number('from', pair[0]), number('to', pair[1])); break;
                 case 'date': $box.append(date('date', value)); break;
                 case 'datePair': $box.append(date('from', pair[0]), date('to', pair[1])); break;
+                case 'lookupText':
+                    // Typed in, with the stored values offered.
+                    var listId = 'cb-values-' + (++datalistCount);
+                    var $list = $('<datalist>').attr('id', listId);
+                    $box.append($('<input type="text" class="form-control">').attr({placeholder: 'value', list: listId})
+                                .val(value == null ? '' : value), $list);
+                    this._lookup(field).done(function(list) {
+                        list.forEach(function(v) { $list.append($('<option>').val(v)); });
+                    });
+                    break;
                 case 'lookup':
                     var $select = $('<select class="form-select" aria-label="Value"><option value="">loading…</option></select>')
                         .appendTo($box);

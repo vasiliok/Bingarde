@@ -12,7 +12,8 @@ platform, config, architecture, commit and status. People browse the builds in a
 filter them with a condition builder of AND/OR groups, save filters as presets, and get an
 e-mail when a new build matches. Files can be downloaded one at a time or as a whole build in
 one zip, and nginx serves them after the app checks access. People sign in with Google,
-Keycloak, GitLab or another OpenID Connect provider, and CI jobs use scoped API tokens.
+Keycloak, GitLab or another OpenID Connect provider, groups decide who sees which builds, and
+CI jobs use scoped API tokens.
 
 ![Builds filtered with two condition groups](docs/screenshots/condition-builder.png)
 
@@ -33,6 +34,10 @@ Keycloak, GitLab or another OpenID Connect provider, and CI jobs use scoped API 
 - **Login.** Single sign-on with any OpenID Connect provider (Google, Keycloak, Authentik,
   GitLab, ...) for people, scoped API tokens (`read` / `write`) for CI. Only token hashes
   are stored. Forms are CSRF-protected. See [docs/login.md](docs/login.md).
+- **Groups and access.** Rules made with the build list's filter decide who sees and who may
+  write which builds: the team gets nightlies, customers only release branches. New users join
+  groups at their first sign-in, so nobody has to add them; a tested build is promoted to a
+  release branch with one click. See [docs/access.md](docs/access.md).
 
 | Build page | Failed build |
 |---|---|
@@ -75,8 +80,9 @@ Open <http://localhost:8080> and sign in with any e-mail. The `demo` profile loa
 builds (`demo/demo-builds.zip`) on the first start, which takes a minute; leave it out to
 start empty. The demo setup uses a developer login, `admin@example.org` is an admin, and
 every user may write. The demo listens on localhost only. For a real deployment turn
-`DEV_LOGIN` off, set your own `SESSION_SECRET` (the app refuses the demo one), and list the
-writers.
+`DEV_LOGIN` off, set your own `SESSION_SECRET` (the app refuses the demo one), make the first
+admin with `docker compose exec web python -m bingarde.manage make-admin you@example.com`, and
+set up the groups ([docs/access.md](docs/access.md)).
 
 To load builds by hand, create a `write` token on the **API tokens** page and run
 `demo/seed.py`. `--from` is a folder, a `.zip` file, or the URL of a `.zip`.
@@ -140,9 +146,7 @@ Set with environment variables (see `docker-compose.yml`):
 | `BASE_URL` | Public URL of the site |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_NAME` | Sign-in provider, see [docs/login.md](docs/login.md) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in without the `OIDC_*` settings |
-| `ALLOWED_EMAIL_DOMAINS`, `ADMIN_EMAILS` | Who may sign in, who is admin |
-| `BLOCKED_EMAILS` | Users who lose access at once, sessions and tokens included |
-| `WRITER_EMAILS`, `WRITER_DOMAINS` | Who may create builds and write tokens (`*` = everyone); others only read |
+| `ALLOWED_EMAIL_DOMAINS` | Who may sign in; what they see comes from their groups ([docs/access.md](docs/access.md)) |
 | `DEV_LOGIN` | `1` = e-mail-only login, for local demos only |
 | `STORAGE` | `local` (default, files in `STORE_DIR`) or `s3` (files in a bucket) |
 | `STORE_DIR` | Where uploaded files are kept with `STORAGE=local` |

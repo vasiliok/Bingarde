@@ -26,9 +26,12 @@
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item"><a class="nav-link{% if current_page == 'buildlist' %} active{% endif %}" href="/builds">Builds</a></li>
                     <li class="nav-item"><a class="nav-link{% if current_page == 'tokens' %} active{% endif %}" href="/tokens">API tokens</a></li>
+                    {% if ident and ident.via == "session" and ident.is_admin %}
+                    <li class="nav-item"><a class="nav-link{% if current_page in ('settings', 'users', 'groups') %} active{% endif %}" href="/admin" id="id-nav-settings"><i class="bi bi-gear me-1"></i>Site settings</a></li>
+                    {% endif %}
                 </ul>
                 <div class="d-flex align-items-center gap-3">
-                    {% set usage = h.storage_usage() %}
+                    {% set usage = h.storage_usage() if ident else None %}
                     {% if usage %}
                     <span class="small text-body-secondary" title="Free space on the file store">
                         <i class="bi bi-hdd me-1"></i>{{ h.format_size(usage[0]) }} free of {{ h.format_size(usage[1]) }}

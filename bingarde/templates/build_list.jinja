@@ -36,6 +36,10 @@
 
         <main class="col-lg-9 col-xl-10">
             {% if error %}<div class="alert alert-warning" role="alert">{{ error }}</div>{% endif %}
+            {% if view_as %}<div class="alert alert-info d-flex align-items-center gap-2" role="status" id="id-view-as">
+                <i class="bi bi-eye"></i><span>You see the builds as <strong>{{ view_as.email }}</strong> sees them.</span>
+                <a class="ms-auto" href="/admin/users/{{ view_as.id }}">Back to the user</a> · <a href="/builds">See all</a>
+            </div>{% endif %}
 
             <form id="conditions-form" class="mb-4">
                 <div id="id-condition-builder"></div>

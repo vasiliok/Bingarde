@@ -14,7 +14,7 @@ import secrets
 from sqlalchemy import func, select
 from tg import TGController, abort, expose, request, response, url
 
-from bingarde.lib import cookies, identity
+from bingarde.lib import access, cookies, identity
 from bingarde.lib import oidc
 from bingarde.model import DBSession, User
 
@@ -75,7 +75,13 @@ def login_csrf_ok(sent):
 
 def find_or_create_user(email, name="", issuer=None, sub=None):
     """Match by sign-in account (issuer + sub) first, then by e-mail (links a
-    DEV_LOGIN user to the account).
+    user an admin added, or a DEV_LOGIN user, to the account).
+
+    A user found by account whose e-mail changed at the provider gets the new
+    e-mail, unless another user has it: raises LoginError("linked").
+
+    A user made here is new: they join the groups whose auto_join matches
+    their e-mail (lib/access.py). Users found here keep their groups.
 
     A user linked to an account is never handed to another account of the same
     provider with the same e-mail: raises LoginError("linked"). A user linked
@@ -86,6 +92,14 @@ def find_or_create_user(email, name="", issuer=None, sub=None):
     if account:
         user = DBSession.scalar(select(User).where(User.oidc_issuer == issuer,
                                                    User.oidc_sub == sub))
+        if user is not None and user.email.lower() != email.lower():
+            taken = DBSession.scalar(select(User).where(func.lower(User.email) == email.lower()))
+            if taken is not None:
+                raise oidc.LoginError(
+                    "linked", "%s (now %s) cannot take the e-mail of user %d"
+                    % (user.email, email, taken.id))
+            log.info("user %d changes e-mail from %s to %s", user.id, user.email, email)
+            user.email = email.lower()
     if user is None:
         user = DBSession.scalar(select(User).where(func.lower(User.email) == email.lower()))
         if user is not None and account and user.oidc_issuer == issuer:
@@ -94,7 +108,8 @@ def find_or_create_user(email, name="", issuer=None, sub=None):
         if user is not None and account and user.oidc_issuer is not None:
             log.info("%s moves from %s to %s", email, user.oidc_issuer, issuer)
             user.oidc_issuer = user.oidc_sub = None
-    if user is None:
+    new = user is None
+    if new:
         user = User(email=email.lower(), name=name or email, is_active=True)
         DBSession.add(user)
     if account and user.oidc_sub is None:
@@ -102,6 +117,8 @@ def find_or_create_user(email, name="", issuer=None, sub=None):
     if name:
         user.name = name
     DBSession.flush()
+    if new:
+        access.join_auto_groups(user)
     return user
 
 
@@ -127,6 +144,7 @@ class OidcController(TGController):
             return failed(exc.code)
         if not user.is_active:
             return failed("disabled")
+        access.sync_oidc_groups(user, claims)
         identity.login(user)
         return go(safe_came_from(came_from))
 

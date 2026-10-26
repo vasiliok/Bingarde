@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from bingarde.lib import notify
 from bingarde.model import FilterPreset, Build, User
-from tests.conftest import api_error, create_build, ok, build_fields
+from tests.conftest import api_error, create_build, ok, build_fields, join_auto_groups
 
 REQUIRED_FIELDS = ["project", "branch", "platform", "build"]
 
@@ -165,6 +165,7 @@ def _preset(db, email, notify_on, project):
     user = User(email=email, name=email)
     db.add(user)
     db.flush()
+    join_auto_groups(db, user)
     db.add(FilterPreset(
         name="preset", user_id=user.id, notify=notify_on, version=2,
         data={"filter": {"field": "project", "op": "eq", "value": project}}))

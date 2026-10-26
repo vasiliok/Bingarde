@@ -1,0 +1,191 @@
+{% extends "bingarde.templates.admin_layout" %}
+
+{% block caption %}{{ group.name }} - Groups - Site settings - Bingarde{% endblock %}
+
+{% block settings %}
+<div style="max-width: 1100px;">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/groups">Groups</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ group.name }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex flex-wrap align-items-center gap-3 mb-1">
+        <h1 class="h4 mb-0">{% if group.is_system %}<i class="bi bi-lock-fill text-body-secondary me-1"></i>{% elif group.is_public %}<i class="bi bi-globe2 text-body-secondary me-1"></i>{% endif %}{{ group.name }}</h1>
+        {% if not group.is_system and not group.is_public %}
+        <form class="ms-auto mb-0" method="post" action="/admin/groups/{{ group.id }}/delete">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Delete the group {{ group.name }}? Its members lose what it gives them.">Delete group</button>
+        </form>
+        {% endif %}
+    </div>
+    <p class="text-body-secondary">{{ group.description or ("Members see every build and manage users and groups." if group.is_system else "") }}</p>
+
+    {% if group.is_public %}
+    <div class="alert alert-danger" role="alert" id="id-public-warning">
+        <i class="bi bi-globe2 me-1"></i><strong>Anyone on the internet</strong> can open and download the builds these rules find, without signing in.
+        Signed-in users have these rules too. Public rules only read. With no rules, nothing is public.
+    </div>
+    {% endif %}
+    {% if done %}<div class="alert alert-success done" role="status">{{ done }}</div>{% endif %}
+    {% if error %}<div class="alert alert-danger error" role="alert">{{ error }}</div>{% endif %}
+
+    {% if not group.is_system %}
+    <div class="card page-card mb-4" id="id-rules">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-shield-lock me-1"></i>Access rules</div>
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead><tr><th class="ps-3">Builds that match</th><th>Access</th><th>Builds now</th><th></th></tr></thead>
+                <tbody>
+                {% for r in group.rules %}
+                <tr data-rule-id="{{ r.id }}">
+                    <td class="ps-3">{{ h.describe_filter(r.filter) }}</td><td>{{ r.level }}</td>
+                    <td><a href="{{ h.filter_url(r.filter) }}" title="Open these builds in the build list">{{ previews[r.id] }}</a></td>
+                    <td class="text-end pe-3 text-nowrap">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-edit-rule="{{ r.id }}">Edit</button>
+                        <form method="post" action="/admin/groups/{{ group.id }}/remove_rule" class="d-inline mb-0">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="rule_id" value="{{ r.id }}">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="ps-3 text-body-secondary">No rules: members of this group see nothing through it.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-body border-top">
+            <form method="post" action="/admin/groups/{{ group.id }}/add_rule" id="id-rule-form"
+                  data-add-action="/admin/groups/{{ group.id }}/add_rule" data-save-action="/admin/groups/{{ group.id }}/save_rule"{% if group.is_public %} data-public{% endif %}>
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="filter" id="id-rule-filter" value="{{ form.filter or '' }}">
+                <input type="hidden" name="rule_id" id="id-rule-id" value="{{ form.rule_id or '' }}">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <h2 class="h6 mb-0" id="id-rule-title">New rule</h2>
+                    {% if presets %}
+                    <select class="form-select form-select-sm ms-auto" id="id-rule-preset" aria-label="Start from a filter preset" style="max-width: 16rem;">
+                        <option value="">Start from a filter preset…</option>
+                        {% for p in presets %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+                    </select>
+                    {% endif %}
+                </div>
+                <div id="id-rule-builder"></div>
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                    <label for="id-rule-level" class="form-label small mb-0">Access</label>
+                    <select class="form-select form-select-sm" id="id-rule-level" name="level" style="max-width: 7rem;">
+                        <option value="read"{% if form.level != "write" %} selected{% endif %}>read</option>
+                        {% if not group.is_public %}<option value="write"{% if form.level == "write" %} selected{% endif %}>write</option>{% endif %}
+                    </select>
+                    <span class="small" id="id-rule-preview" aria-live="polite"></span>
+                    <span class="ms-auto"></span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="id-rule-cancel" hidden>Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="id-rule-submit">Add rule</button>
+                </div>
+                {% if group.is_public %}
+                <p class="small text-body-secondary mt-2 mb-0">The same filter as on the build list. Anyone may open and download the builds it finds; with no conditions, every build.</p>
+                {% else %}
+                <p class="small text-body-secondary mt-2 mb-0">The same filter as on the build list. Members see the builds it finds; with no conditions, every build. <strong>write</strong> also lets them create builds that match, upload and promote.</p>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not group.is_public %}
+    <div class="card page-card mb-4" id="id-members">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-people me-1"></i>Members ({{ members|length }})</div>
+        <div class="card-body border-bottom">
+            <form class="row g-2 align-items-end" method="post" action="/admin/groups/{{ group.id }}/add_members">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <div class="col-md-9">
+                    <label for="id-member-emails" class="form-label small">Add by e-mail, comma-separated (people who never signed in are added as users)</label>
+                    <input type="text" class="form-control" id="id-member-emails" name="emails" required value="{{ form.emails or '' }}" placeholder="anna@example.com, bob@example.com">
+                </div>
+                <div class="col-md-3 d-grid"><button type="submit" class="btn btn-primary">Add</button></div>
+            </form>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <tbody>
+                {% for m in members %}
+                <tr>
+                    <td class="ps-3"><a href="/admin/users/{{ m.user.id }}">{{ m.user.email }}</a>{% if not m.user.is_active %} <span class="badge text-bg-secondary">disabled</span>{% endif %}</td>
+                    <td class="small text-body-secondary">{{ "joined at first sign-in" if m.source == "auto" else "added" }}{% if m.added_by %} by {{ m.added_by.email }}{% endif %}, {{ h.format_date(m.added_at, "%Y-%m-%d") }}</td>
+                    <td class="text-end pe-3">
+                        <form method="post" action="/admin/groups/{{ group.id }}/remove_member" class="mb-0">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="user_id" value="{{ m.user.id }}">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td class="ps-3 text-body-secondary py-3">No members yet.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% endif %}
+
+    {% if not group.is_system and not group.is_public %}
+    <div class="card page-card mb-4" id="id-new-users">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-person-check me-1"></i>New users</div>
+        <div class="card-body">
+            <form method="post" action="/admin/groups/{{ group.id }}/new_users">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <p class="small text-body-secondary mb-2">Who joins this group by themselves, at their first sign-in. An admin can still remove them; they are not added again.</p>
+                <div class="form-check"><input class="form-check-input" type="radio" name="mode" value="none" id="id-mode-none"{% if auto_mode == "none" %} checked{% endif %}><label class="form-check-label" for="id-mode-none">nobody</label></div>
+                <div class="form-check"><input class="form-check-input" type="radio" name="mode" value="all" id="id-mode-all"{% if auto_mode == "all" %} checked{% endif %}><label class="form-check-label" for="id-mode-all">everyone who signs in</label></div>
+                <div class="form-check d-flex flex-wrap align-items-center gap-2">
+                    <input class="form-check-input" type="radio" name="mode" value="domains" id="id-mode-domains"{% if auto_mode == "domains" %} checked{% endif %}>
+                    <label class="form-check-label" for="id-mode-domains">people whose e-mail ends with</label>
+                    <input type="text" class="form-control form-control-sm" name="domains" value="{{ auto_domains }}" placeholder="partner.com, partner.de" aria-label="E-mail domains" style="max-width: 20rem;">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm mt-3">Save</button>
+            </form>
+            {% if group.auto_join %}
+            <form method="post" action="/admin/groups/{{ group.id }}/add_matching" class="mt-3 mb-0">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Add matching existing users now</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card page-card" id="id-group-settings">
+        <div class="card-header bg-body fw-semibold"><i class="bi bi-pencil me-1"></i>Name and description</div>
+        <div class="card-body">
+            <form class="row g-2 align-items-end" method="post" action="/admin/groups/{{ group.id }}/save">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <div class="col-md-4">
+                    <label for="id-edit-name" class="form-label small">Name</label>
+                    <input type="text" class="form-control" id="id-edit-name" name="name" maxlength="100" required value="{{ group.name }}"{% if group.is_system or group.is_public %} readonly{% endif %}>
+                </div>
+                <div class="col-md-6">
+                    <label for="id-edit-description" class="form-label small">Description</label>
+                    <input type="text" class="form-control" id="id-edit-description" name="description" maxlength="500" value="{{ group.description }}">
+                </div>
+                <div class="col-md-2 d-grid"><button type="submit" class="btn btn-outline-primary">Save</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if not group.is_system %}
+<script type="application/json" id="id-page-data">{{ {
+    "fields": filter_fields,
+    "rules": rule_data,
+    "presets": presets,
+}|tojson }}</script>
+<script src="{{ h.static('js/jquery-3.7.1.min.js') }}"></script>
+<script src="{{ h.static('js/condition-builder.js') }}"></script>
+{% endif %}
+<script src="{{ h.static('js/admin.js') }}"></script>
+{% endblock %}

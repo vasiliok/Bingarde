@@ -11,10 +11,23 @@ limit_conn_zone $binary_remote_addr zone=perip:10m;
 # anyone, so a single address may not start more than this.
 limit_req_zone $binary_remote_addr zone=downloads:10m rate=2r/s;
 
+# Errors nginx answers itself (not the app's) get a Bingarde page instead of
+# nginx's own: JSON under /api/, HTML elsewhere (nginx/errors, mounted into
+# nginx itself, so they work while the app is down).
+map $uri $error_format {
+    ~^/api/  json;
+    default  html;
+}
+
 server {
     listen 80;
     server_name _;
     server_tokens off;
+
+    error_page 404 /_errors/404.$error_format;
+    error_page 413 /_errors/413.$error_format;
+    error_page 429 /_errors/429.$error_format;
+    error_page 500 502 503 504 /_errors/50x.$error_format;
 
     # Only file uploads may be large (see the upload location). This matches
     # the app's max_request_body.
@@ -46,6 +59,12 @@ server {
         alias /var/www/static/;
         access_log off;
         expires 1h;
+        add_header X-Content-Type-Options nosniff always;
+    }
+
+    location /_errors/ {
+        internal;
+        alias /var/www/errors/;
         add_header X-Content-Type-Options nosniff always;
     }
 

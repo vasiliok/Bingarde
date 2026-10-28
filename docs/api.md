@@ -99,10 +99,12 @@ Errors use the HTTP status and one body shape:
 | 405 | `method_not_allowed` | e.g. `PUT` |
 | 409 | `conflict` | the change clashes with existing data: a promotion onto an existing build, a group name in use, removing the last admin |
 | 411 | `length_required` | a body without `Content-Length` |
-| 413 | `too_large` | a body over the limit (nginx answers this one with an HTML page) |
+| 413 | `too_large` | a body over the limit |
 | 415 | `unsupported_media_type` | a body that is not `application/json` |
 | 422 | `invalid` | a missing, unknown or invalid field; the message names it |
+| 429 | `too_many_requests` | too many downloads from one address (see [access.md](access.md#public-downloads)) |
 | 500 | `internal` | an unexpected server error |
+| 502, 503, 504 | `unavailable` | the app is not running, e.g. while it restarts: try again |
 | 503 | `busy` | too many zip downloads at the moment |
 
 When a request fails, nothing it wrote is kept.

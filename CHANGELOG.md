@@ -6,6 +6,12 @@ How to keep it: [docs/versioning.md](docs/versioning.md).
 
 ## Unreleased
 
+### Changed
+
+- Errors that nginx answers itself (an unknown address outside the app, a too large upload,
+  too many downloads, the app not running) show a Bingarde page instead of nginx's own, and
+  JSON in the API's error format under `/api/`.
+
 ## 2.0.0 - 2026-10-26
 
 Users, groups, access to builds and public downloads. **Breaking:** see "Upgrading" below.

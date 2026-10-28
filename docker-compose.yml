@@ -113,6 +113,8 @@ services:
     volumes:
       # Rendered into conf.d/default.conf at startup (envsubst).
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      # Pages for errors nginx answers itself (404, 413, 429, 502, ...).
+      - ./nginx/errors:/var/www/errors:ro
       - static:/var/www/static:ro
       - store:/var/www/store:ro
 

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Unavailable - Bingarde</title>
+    <link href="/static/bootstrap5/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/bootstrap-icons/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="/static/css/app.css" rel="stylesheet">
+</head>
+<!-- Shown by nginx for errors it answers itself (nginx/default.conf.template);
+     the app's own errors use bingarde/templates/error.jinja. -->
+<body>
+    <nav class="navbar bg-body border-bottom mb-4">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand fw-semibold" href="/"><i class="bi bi-box-seam me-2 text-primary"></i>Bingarde</a>
+        </div>
+    </nav>
+    <div class="container" style="max-width: 640px;">
+        <div class="card page-card mt-5">
+            <div class="card-body p-5 text-center">
+                <div class="display-4 fw-semibold text-body-secondary"><h1>Unavailable</h1></div>
+                <p class="lead">Bingarde is not available right now. Please try again in a minute.</p>
+                <a class="btn btn-primary" href="/builds"><i class="bi bi-arrow-left me-1"></i>Back to the build list</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

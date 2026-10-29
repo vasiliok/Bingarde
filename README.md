@@ -53,13 +53,26 @@ The demo data in the screenshots is real: a small C project built with MSVC or c
 gcc (Linux x86_64 and aarch64) and Xcode (iOS, macOS). Its sources and build scripts
 live in a separate repo, linked here as the [`demo/`](demo/) submodule.
 
+## When it helps
+
+Two months after a release, a customer sends a crash dump. They have the release build;
+to find the cause you need that build's PDB. Building the release again does not help:
+the new PDB almost always differs (a new GUID, other timestamps and paths), and the
+debugger refuses it for the customer's exe.
+
+With Bingarde, CI uploaded the exe and its PDB together when the release was built.
+Find the build by version or commit (filter: project, branch `release-1.0`, platform
+`windows`), download `DemoApp.pdb` from the same build, and open the dump. The same goes
+for `.dSYM` on macOS and iOS and `.debug` files on Linux: the symbols of the exact binary
+the customer runs, kept as long as you need them.
+
 ## Why Bingarde
 
 - **Artifactory, Nexus.** Package repositories first: Maven, npm, Docker images. They are
   big Java servers, and much of what makes them useful for binaries is in the paid editions.
   Bingarde is one small Python app with PostgreSQL, made only for build outputs.
 - **CI artifacts (GitHub Actions, GitLab, Jenkins).** Kept per pipeline run and usually
-  deleted after some days or weeks. You cannot filter builds of several projects by branch,
+  deleted after some days or weeks: too soon for the crash above. You cannot filter builds of several projects by branch,
   platform and status in one list, or get an e-mail when a matching build appears.
 - **A bare S3 bucket or file share.** Holds the files, but not what they are: no build
   number, commit, platform or status, no search, no per-build page, no access check.

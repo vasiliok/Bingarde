@@ -9,6 +9,8 @@ downloads and preset e-mails all follow the same rules.
 Admins manage everything under **Site settings** in the menu bar (`/admin`), on its **Users**
 and **Groups** pages, or through the [admin API](api.md#users-and-groups).
 
+![Site settings: the overview with users, groups and public downloads](screenshots/access-settings.png)
+
 ## Releases for some, everything for others
 
 The usual setup: the team sees every build, including nightlies and feature branches, while
@@ -26,6 +28,8 @@ number, ID, date), joined with AND or OR. While you edit, the page shows how man
 rule finds now, with **Show them** to open them in the build list. **Start from a filter
 preset** copies a saved preset into the rule; later changes to the preset do not change the
 rule. **Edit** shows a rule in the filter again. A rule with no conditions finds every build.
+
+![A group's rule in the filter editor, with the live count of the builds it finds](screenshots/access-rule.png)
 
 Text conditions ignore upper and lower case. Rules are checked on every request, so a rule
 like "created in the last 30 days" moves with time, and a new build is visible at once to
@@ -47,12 +51,16 @@ it does not need to be the user who created the build. The new audience sees the
 and its history gets a line "promoted from main to release/1.4 by ...". If the release branch
 already has the same build, the answer is `409`.
 
+![Promote to branch on a build page](screenshots/access-promote.png)
+
 ## Public downloads
 
 The built-in group **Public** is for visitors who are not signed in: anyone on the internet.
 Its rules decide which builds they may open and download, without an account. A new server's
 Public group has no rules, so nothing is public until an admin adds one. Its page says in red
 that its rules open builds to everyone, and a rule with no conditions asks for confirmation.
+
+![The Public group with its warning and a rule for release branches](screenshots/access-public.png)
 
 For example, a rule "branch starts with `release/`" puts every release online. Another site
 can then link to them:
@@ -70,6 +78,8 @@ What visitors get:
   admins only anyway.
 - Visitors get no session or cookie.
 
+![A public release as a visitor sees it: download buttons, no history, no CI link](screenshots/access-visitor.png)
+
 Signed-in users have the Public rules too, on top of their own groups: someone with no
 groups sees the public builds. Public rules only read, and the group has no members, cannot
 be renamed or deleted, and new users do not join it. To stop public downloads, remove its
@@ -83,6 +93,8 @@ Downloads are limited per address in nginx: 2 a second, with bursts of 30; more 
 may change every build, delete builds and files, and they alone see the user and group lists
 and manage them. Members of other groups get `403` on those pages and API calls, and nothing
 else in Bingarde shows them other users' e-mails or group names.
+
+![The Groups page: Admin, Public and the groups with their rules](screenshots/access-groups.png)
 
 There is always at least one active admin: the last one cannot be disabled, deleted or taken
 out of Admin, and nobody can disable or delete themselves.
@@ -109,6 +121,8 @@ This happens once, when the account is made. An admin can remove someone from su
 and they are not added again at the next sign-in. **Add matching existing users now** on the
 group page applies the setting to accounts that already exist. The Admin group cannot have it.
 
+![A group's New users setting: people whose e-mail ends with partner.test](screenshots/access-new-users.png)
+
 A new server has the group **Releases** (read: branch starts with `release/` or with
 `release-`; everyone who signs in joins), so new people see the official releases at once.
 Change its rule if your release branches are named differently. If no group takes new users, the Users and
@@ -130,6 +144,8 @@ groups the admin gave it; the new-user groups are not added to it.
 | Disabled | Refused: "This account is disabled" |
 | Deleted | A new account: joins the new-user groups again |
 
+![The Users page: a user added by hand shows "never" until their first sign-in](screenshots/access-users.png)
+
 ## Users
 
 On a user's page an admin sets their groups, sees what they can see (and the build list as they
@@ -139,6 +155,8 @@ see it), revokes their tokens, and can:
 - **delete** them: the user, their tokens, presets and memberships go; their builds stay,
   without a creator.
 
+![A user's page: groups, what they can see, tokens and the danger zone](screenshots/access-user.png)
+
 ## Tokens
 
 A token's scope limits it further: a `read` token never writes, even for a user with write
@@ -147,6 +165,8 @@ user created (or any build for admins); promotion is the exception above. A chan
 before and after: a writer may not change a build so that their rule no longer finds it, for
 example mark it `complete` when their rule is "status is failed". Changing groups applies to
 existing tokens and sessions at once.
+
+![The API tokens page of a user who may only read release builds](screenshots/access-tokens.png)
 
 ## Upgrading from version 1
 
@@ -161,6 +181,8 @@ reads them once and turns them into data:
 - `BLOCKED_EMAILS` → disabled users;
 - every existing user joins **Releases** (read builds whose branch starts with `release/` or
   `release-`).
+
+![The Groups page right after upgrading: Admin, Releases and Writers](screenshots/access-upgrade.png)
 
 So after the upgrade, people who are not writers see **only release builds** until an
 admin gives them more, for example a group with a `read` rule without conditions. Writers and CI tokens keep

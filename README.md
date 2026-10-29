@@ -47,9 +47,9 @@ download them without an account.
 
 | Build page | Failed build |
 |---|---|
-| ![Windows build with exe, pdb, test report and log](docs/screenshots/build-windows.png) | ![Failed Linux build with its compiler log](docs/screenshots/build-failed.png) |
+| ![Windows release build with exe, pdb and log, the groups that see it and Promote](docs/screenshots/build-windows.png) | ![Failed Linux build with its compiler log](docs/screenshots/build-failed.png) |
 
-The demo data in the screenshots is real: a small C project built with MSVC (Windows),
+The demo data in the screenshots is real: a small C project built with MSVC or clang (Windows),
 gcc (Linux x86_64 and aarch64) and Xcode (iOS, macOS). Its sources and build scripts
 live in a separate repo, linked here as the [`demo/`](demo/) submodule.
 
